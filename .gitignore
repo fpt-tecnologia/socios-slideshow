@@ -1,0 +1,23 @@
+# Dependencias
+node_modules/
+npm-debug.log*
+
+# Respaldos con marca de tiempo que deja el flujo de parcheo en Cloud Shell
+*.bak
+*.bak2
+*.pre*
+*.antes*
+*.noticker
+*.orig
+
+# Secretos y configuracion local: todo lo sensible vive en variables de
+# entorno del servicio de Cloud Run, nunca en el repositorio
+.env
+.env.*
+*.key
+*.pem
+service-account*.json
+
+# Temporales
+*.log
+/tmp/

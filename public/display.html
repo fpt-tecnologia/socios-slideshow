@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pantalla — Fitness Para Todos</title>
+<link rel="stylesheet" href="/vendor/pptxjs/css/pptxjs.css">
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    overflow: hidden;
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  #ticker {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: linear-gradient(90deg, #0b1f4d, #14306e);
+    color: #fff;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    border-bottom: 3px solid #4a7dff;
+  }
+  #ticker marquee {
+    width: 100%;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  #pptx-wrap {
+    position: fixed;
+    top: 64px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #000;
+  }
+  #pptx-container {
+    width: 100%;
+    height: 100%;
+  }
+  #empty-state {
+    position: fixed;
+    top: 64px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #888;
+    font-size: 28px;
+    text-align: center;
+    padding: 40px;
+    box-sizing: border-box;
+  }
+  #loading-state {
+    position: fixed;
+    top: 64px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    color: #ccc;
+    font-size: 22px;
+    text-align: center;
+  }
+  .no-ticker #ticker { display: none; }
+  .no-ticker #pptx-wrap,
+  .no-ticker #empty-state,
+  .no-ticker #loading-state {
+    top: 0;
+  }
+  #video-player {
+    display: none;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+  }
+  #loading-bar-track {
+    width: 320px;
+    max-width: 70vw;
+    height: 8px;
+    border-radius: 4px;
+    background: #222;
+    overflow: hidden;
+    margin-top: 20px;
+  }
+  #loading-bar-fill {
+    width: 40%;
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #4a7dff, #7aa2ff);
+    animation: loading-slide 1.2s ease-in-out infinite;
+  }
+  @keyframes loading-slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+  }
+</style>
+</head>
+<body>
+  <div id="ticker">
+    <marquee id="marquee" behavior="scroll" direction="left" scrollamount="8">Cargando número de socios…</marquee>
+  </div>
+  <div id="pptx-wrap">
+    <div id="pptx-container"></div>
+    <video id="video-player" autoplay muted loop playsinline></video>
+  </div>
+  <div id="empty-state" style="display:none;">
+    Aún no se ha subido ninguna presentación.<br>
+    Súbela desde /upload.html en el equipo host.
+  </div>
+  <div id="loading-state">
+    <div>Cargando presentación…</div>
+    <div id="loading-bar-track"><div id="loading-bar-fill"></div></div>
+  </div>
+
+  <script src="/vendor/pptxjs/js/jquery-1.11.3.min.js"></script>
+  <script src="/vendor/pptxjs/js/jszip.min.js"></script>
+  <script src="/vendor/pptxjs/js/filereader.js"></script>
+  <script src="/vendor/pptxjs/js/dingbat.js"></script>
+  <script src="/vendor/pptxjs/js/pptxjs.min.js"></script>
+  <script src="/vendor/pptxjs/js/divs2slides.min.js"></script>
+
+<script>
+let lastUploadedAt = null;
+let presentationInitialized = false;
+const urlParams = new URLSearchParams(location.search);
+const VALID_SCREENS = ['1', '2', '3', '4', '5', '6', '7', '8'];
+const SCREEN = VALID_SCREENS.includes(urlParams.get('screen')) ? urlParams.get('screen') : '1';
+function withScreen(url) {
+  return url + (url.indexOf('?') === -1 ? '?' : '&') + 'screen=' + SCREEN;
+}
+
+async function fetchJSON(url) {
+  const res = await fetch(url, { cache: 'no-store' });
+  return res.json();
+}
+
+function formatCount(n) {
+  if (n === null || n === undefined) return '—';
+  return Number(n).toLocaleString('es-MX');
+}
+
+function construirTextoTicker(data) {
+  const partes = ['\u{1F465}  Socios activos: ' + formatCount(data.count)];
+  if (data.blackCardPct !== null && data.blackCardPct !== undefined) {
+    partes.push('Black Card: ' + data.blackCardPct + '%');
+  }
+  if (data.clubesAbiertos !== null && data.clubesAbiertos !== undefined) {
+    partes.push('Clubes abiertos: ' + formatCount(data.clubesAbiertos));
+  }
+  const bloque = partes.join('  —  ');
+  return bloque + '  —  Fitness Para Todos  —  ' + bloque;
+}
+
+async function updateTicker() {
+  if (['3','4','5','6','7','8'].includes(SCREEN)) return;
+  try {
+    const data = await fetchJSON('/api/socios');
+    const marquee = document.getElementById('marquee');
+    if (data.error && data.count === null) {
+      marquee.textContent = 'Número de socios: no disponible por el momento.';
+    } else {
+      marquee.textContent = construirTextoTicker(data);
+    }
+  } catch (e) {
+    // Si falla, se deja el texto anterior.
+  }
+}
+
+function showLoading() {
+  document.getElementById('loading-state').style.display = 'flex';
+}
+
+function hideLoading() {
+  document.getElementById('loading-state').style.display = 'none';
+}
+
+async function initVideo() {
+  document.getElementById('empty-state').style.display = 'none';
+  const pptxContainer = document.getElementById('pptx-container');
+  pptxContainer.innerHTML = '';
+  pptxContainer.style.display = 'none';
+  presentationInitialized = true;
+  showLoading();
+  const video = document.getElementById('video-player');
+  video.style.display = 'block';
+  video.muted = true;
+  video.autoplay = true;
+  video.playsInline = true;
+  video.loop = true;
+  video.onended = () => {
+    video.currentTime = 0;
+    video.play().catch(() => {});
+  };
+  let loadingHidden = false;
+  const finishLoading = () => {
+    if (loadingHidden) return;
+    loadingHidden = true;
+    hideLoading();
+  };
+  video.onloadeddata = () => { finishLoading(); video.play().catch(() => {}); };
+  video.oncanplay = () => { video.play().catch(() => {}); };
+  video.onerror = finishLoading;
+  video.src = withScreen('/api/current-pptx?ts=' + Date.now());
+  video.load();
+  video.play().catch(() => {});
+  setTimeout(finishLoading, 15000);
+}
+
+async function initPresentation(intervalSeconds) {
+  document.getElementById('empty-state').style.display = 'none';
+  const container = document.getElementById('pptx-container');
+  container.style.display = '';
+  container.innerHTML = '';
+  presentationInitialized = true;
+  document.getElementById('video-player').style.display = 'none';
+
+  showLoading();
+
+  // PPTXjs no ofrece un callback de progreso real; en vez de eso, detectamos
+  // cuando aparecen las diapositivas dentro del contenedor para ocultar la
+  // barra de carga, con un tiempo maximo de espera de seguridad.
+  let loadingHidden = false;
+  const finishLoading = () => {
+    if (loadingHidden) return;
+    loadingHidden = true;
+    hideLoading();
+    observer.disconnect();
+  };
+  const observer = new MutationObserver(() => {
+    if (container.children.length > 0) finishLoading();
+  });
+  observer.observe(container, { childList: true, subtree: true });
+  setTimeout(finishLoading, 30000);
+
+  startVideoAutoplayLoop();
+
+  $('#pptx-container').pptxToHtml({
+    pptxFileUrl: withScreen('/api/current-pptx?ts=' + Date.now()),
+    slideMode: true,
+    slidesScale: '',
+    keyBoardShortCut: false,
+    mediaProcess: true,
+    jsZipV2: false,
+    themeProcess: true,
+    slideType: 'divs2slidesjs',
+    slideModeConfig: {
+      first: 1,
+      nav: false,
+      showPlayPauseBtn: false,
+      keyBoardShortCut: false,
+      showSlideNum: false,
+      showTotalSlideNum: false,
+      autoSlide: intervalSeconds || 10,
+      randomAutoSlide: false,
+      loop: true,
+      background: 'black',
+      transition: 'fade',
+      transitionTime: 1,
+    },
+  });
+}
+
+// Los videos incrustados en las diapositivas (via pptxjs) se insertan con
+// controles manuales y sin reproduccion automatica. Como esta pantalla no
+// tiene a nadie que le de "play", forzamos que el video de la diapositiva
+// visible se reproduzca solo (en silencio, para que el navegador lo permita
+// sin interaccion humana) y pausamos/reiniciamos los de las demas diapositivas.
+let videoAutoplayLoopStarted = false;
+function manageVideoAutoplay() {
+  document.querySelectorAll('#pptx-container .slide').forEach((slideEl) => {
+    const isVisible = !!(slideEl.offsetWidth || slideEl.offsetHeight || slideEl.getClientRects().length);
+    slideEl.querySelectorAll('video').forEach((video) => {
+      if (isVisible) {
+        if (!video.hasAttribute('data-autoplay-ready')) {
+          video.setAttribute('data-autoplay-ready', '1');
+          video.muted = true;
+          video.autoplay = true;
+          video.loop = true;
+          video.playsInline = true;
+          video.removeAttribute('controls');
+        }
+        if (video.paused) {
+          video.play().catch(() => {});
+        }
+      } else if (!video.paused) {
+        video.pause();
+        video.currentTime = 0;
+      }
+    });
+  });
+}
+function startVideoAutoplayLoop() {
+  if (videoAutoplayLoopStarted) return;
+  videoAutoplayLoopStarted = true;
+  setInterval(manageVideoAutoplay, 500);
+}
+
+// ---------- Lista de reproduccion de varios videos (pantallas 3 en adelante) ----------
+const PLAYLIST_SCREENS = ['3', '4', '5', '6', '7', '8'];
+let playlistItems = [];
+let playlistIndex = 0;
+let playlistSignature = null;
+let playlistActive = false;
+
+// Un mismo video puede repetirse en la lista, asi que la URL depende del
+// archivo (video) y no del renglon: el navegador reaprovecha lo ya descargado.
+// ---- Cache de video en la propia pantalla ----
+// Las Samsung Tizen ignoran los encabezados de cache para video: vuelven a
+// descargar el archivo completo en cada vuelta del loop, todo el dia. Aqui
+// cada video se descarga UNA vez y se guarda en memoria como blob.
+// Si algo falla, el video cae solo a la URL directa y el comportamiento
+// es exactamente el de antes: nunca puede quedar peor.
+const cacheBlobs = {};
+let precargaEnCurso = false;
+const LIMITE_BLOB = 60 * 1024 * 1024;
+// Techo total: la RAM del navegador de una Smart TV es limitada. Si la lista
+// pesa mas que esto, los que no quepan se reproducen por red como antes.
+const LIMITE_TOTAL = 150 * 1024 * 1024;
+const tamBlobs = {};
+let bytesEnCache = 0;
+
+function urlDirectaItem(item) {
+  return '/api/playlist-item?screen=' + SCREEN + '&id=' + encodeURIComponent(item.video);
+}
+
+async function precargarLista(items) {
+  if (precargaEnCurso) return;
+  precargaEnCurso = true;
+  try {
+    const vivos = {};
+    items.forEach((it) => { vivos[it.video] = true; });
+    Object.keys(cacheBlobs).forEach((id) => {
+      if (!vivos[id]) {
+        try { URL.revokeObjectURL(cacheBlobs[id]); } catch (e) {}
+        bytesEnCache -= (tamBlobs[id] || 0);
+        delete tamBlobs[id];
+        delete cacheBlobs[id];
+      }
+    });
+    for (const it of items) {
+      if (cacheBlobs[it.video]) continue;
+      try {
+        const r = await fetch(urlDirectaItem(it), { cache: 'no-store' });
+        if (!r.ok) continue;
+        const largo = Number(r.headers.get('content-length') || 0);
+        if (largo > LIMITE_BLOB) continue;
+        if (bytesEnCache + largo > LIMITE_TOTAL) {
+          console.log('cache local lleno, este video se reproduce por red:', it.video);
+          continue;
+        }
+        const b = await r.blob();
+        if (!b || !b.size) continue;
+        cacheBlobs[it.video] = URL.createObjectURL(b);
+        tamBlobs[it.video] = b.size;
+        bytesEnCache += b.size;
+        console.log('video en cache local:', it.video, (b.size / 1048576).toFixed(1) + ' MB');
+      } catch (e) {
+        // sin cache para este: seguira usando la red
+      }
+    }
+  } finally {
+    precargaEnCurso = false;
+  }
+}
+
+function playlistItemUrl(item) {
+  return cacheBlobs[item.video] || urlDirectaItem(item);
+}
+
+function playPlaylistIndex(i, force) {
+  if (!playlistItems.length) return;
+  const total = playlistItems.length;
+  playlistIndex = ((i % total) + total) % total;
+  const video = document.getElementById('video-player');
+  if (!video) return;
+  const url = playlistItemUrl(playlistItems[playlistIndex]);
+  // Si el siguiente renglon es el mismo archivo que ya esta cargado (un video
+  // repetido dos veces seguidas), reasignar src no dispara nada: hay que
+  // rebobinarlo a mano o la lista se quedaria detenida ahi.
+  if (!force && video.getAttribute('data-src') === url) {
+    try { video.currentTime = 0; } catch (e) {}
+    video.play().catch(() => {});
+    return;
+  }
+  video.setAttribute('data-src', url);
+  video.src = url;
+  video.load();
+  video.play().catch(() => {});
+}
+
+function startPlaylist() {
+  document.getElementById('empty-state').style.display = 'none';
+  const pptxContainer = document.getElementById('pptx-container');
+  if (pptxContainer) {
+    pptxContainer.innerHTML = '';
+    pptxContainer.style.display = 'none';
+  }
+  presentationInitialized = true;
+  playlistActive = true;
+  showLoading();
+  const video = document.getElementById('video-player');
+  video.style.display = 'block';
+  video.muted = true;
+  video.autoplay = true;
+  video.playsInline = true;
+  video.loop = false;
+  let loadingHidden = false;
+  const finishLoading = () => {
+    if (loadingHidden) return;
+    loadingHidden = true;
+    hideLoading();
+  };
+  video.onended = () => { if (recargarSiTocaAhora('fin de video')) return; playPlaylistIndex(playlistIndex + 1); };
+  video.onloadeddata = () => { finishLoading(); video.play().catch(() => {}); };
+  video.oncanplay = () => { video.play().catch(() => {}); };
+  video.onerror = () => {
+    finishLoading();
+    if (playlistItems.length > 1) {
+      setTimeout(() => playPlaylistIndex(playlistIndex + 1, true), 3000);
+    }
+  };
+  setTimeout(finishLoading, 15000);
+  playPlaylistIndex(0, true);
+}
+
+// Devuelve true si esta pantalla esta gobernada por una lista de reproduccion,
+// en cuyo caso el flujo normal de una sola presentacion no debe ejecutarse.
+async function checkPlaylistLoop() {
+  if (PLAYLIST_SCREENS.indexOf(SCREEN) === -1) return false;
+  // Las pantallas 3 en adelante nunca muestran el contador de socios.
+  document.body.classList.add('no-ticker');
+  let data;
+  try {
+    data = await fetchJSON(withScreen('/api/playlist'));
+  } catch (e) {
+    return playlistActive;
+  }
+  const items = (data && data.items) || [];
+  if (!items.length) {
+    if (playlistActive) {
+      location.reload();
+      return true;
+    }
+    return false;
+  }
+  precargarLista(items);
+  const signature = items.map((it) => it.slot + ':' + it.video).join(',');
+  if (!playlistActive) {
+    playlistItems = items;
+    playlistSignature = signature;
+    startPlaylist();
+    return true;
+  }
+  if (signature !== playlistSignature) {
+    playlistItems = items;
+    playlistSignature = signature;
+    playPlaylistIndex(0, true);
+  }
+  return true;
+}
+
+async function checkStatusLoop() {
+  if (await checkPlaylistLoop()) return;
+
+  try {
+    const [status, displayConfig] = await Promise.all([
+      fetchJSON(withScreen('/api/status')),
+      fetchJSON(withScreen('/api/display-config')),
+    ]);
+
+    document.body.classList.toggle('no-ticker', displayConfig.showSociosTicker === false);
+
+    if (!status.hasPresentation) {
+      document.getElementById('empty-state').style.display = 'flex';
+      hideLoading();
+      lastUploadedAt = null;
+      presentationInitialized = false;
+    } else if (!presentationInitialized || status.uploadedAt !== lastUploadedAt) {
+      lastUploadedAt = status.uploadedAt;
+      // Si ya habia una presentacion cargada y cambio, recargamos toda la pagina
+      // para reiniciar limpiamente la libreria de renderizado.
+      if (presentationInitialized) {
+        location.reload();
+        return;
+      }
+      if (status.contentType && status.contentType.indexOf('video/') === 0) {
+        await initVideo();
+      } else {
+        await initPresentation(displayConfig.slideIntervalSeconds);
+      }
+    }
+  } catch (e) {
+    console.error('Error consultando estado:', e);
+  }
+}
+
+checkStatusLoop();
+updateTicker();
+// ---- Actualizacion automatica cuando se despliega codigo nuevo ----
+// La pagina de una pantalla puede quedar abierta semanas. Los datos si se
+// refrescan solos, pero el codigo no: sin esto, un cambio solo se ve si
+// alguien va fisicamente a recargar cada TV.
+let versionBase = null;
+let vecesVersionDistinta = 0;
+let recargaPendiente = false;
+let recargaYaDisparada = false;
+
+function recargarSiTocaAhora(motivo) {
+  if (!recargaPendiente || recargaYaDisparada) return false;
+  recargaYaDisparada = true;
+  console.log('Version nueva: recargando (' + motivo + ')');
+  setTimeout(() => { location.reload(); }, 300);
+  return true;
+}
+
+async function revisarVersion() {
+  try {
+    const r = await fetch('/api/version?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d || !d.version) return;
+    if (versionBase === null) { versionBase = d.version; return; }
+    if (d.version === versionBase) { vecesVersionDistinta = 0; return; }
+    // Dos lecturas seguidas: durante un despliegue hay un instante con las
+    // dos revisiones sirviendo trafico y no queremos reaccionar a eso.
+    vecesVersionDistinta += 1;
+    if (vecesVersionDistinta < 2) return;
+    if (recargaPendiente) return;
+    recargaPendiente = true;
+    if (PLAYLIST_SCREENS.indexOf(SCREEN) === -1) {
+      // Pantallas 1 y 2: no hay video en lista que interrumpir.
+      recargarSiTocaAhora('pantalla sin lista de videos');
+    } else {
+      // Pantallas de zona: esperamos a que termine el video en curso.
+      // Red de seguridad por si ese momento nunca llega (video en loop).
+      setTimeout(() => recargarSiTocaAhora('espera maxima alcanzada'), 1800000);
+    }
+  } catch (e) {
+    // sin red o servidor dormido: se reintenta en el siguiente ciclo
+  }
+}
+setInterval(revisarVersion, 300000);
+revisarVersion();
+
+setInterval(checkStatusLoop, 60000);
+setInterval(updateTicker, 60000);
+
+// ---------- Vigilante de video (auto-recuperacion si se congela o falla) ----------
+let watchdogLastTime = -1;
+let watchdogStallTicks = 0;
+function recoverVideo(reason) {
+  if (playlistActive) {
+    console.warn('[video-watchdog] Recuperando la lista (' + reason + ').');
+    watchdogLastTime = -1;
+    watchdogStallTicks = 0;
+    playPlaylistIndex(playlistIndex, true);
+    return;
+  }
+  return recoverVideoSingle(reason);
+}
+function recoverVideoSingle(reason) {
+
+  const video = document.getElementById('video-player');
+  if (!video) return;
+  console.warn('[video-watchdog] Recuperando el video (' + reason + ').');
+  watchdogLastTime = -1;
+  watchdogStallTicks = 0;
+  video.src = withScreen('/api/current-pptx?ts=' + Date.now());
+  video.load();
+  video.play().catch(() => {});
+}
+let watchdogLoadTicks = 0;
+function videoWatchdog() {
+  const vw = document.getElementById('video-player');
+  // Mientras el video todavia esta cargando por primera vez (readyState < 2)
+  // su currentTime no avanza, y el vigilante lo interpretaba como congelado:
+  // lo reiniciaba cada 30s y lo dejaba empezando de cero una y otra vez con
+  // archivos grandes o internet lento. Ahora se le dan ~2 minutos de gracia.
+  if (vw && vw.style.display === 'block' && !vw.error && !vw.paused && !vw.ended && vw.readyState < 2) {
+    watchdogLoadTicks += 1;
+    watchdogLastTime = -1;
+    watchdogStallTicks = 0;
+    if (watchdogLoadTicks < 12) return;
+    watchdogLoadTicks = 0;
+    recoverVideo('no alcanzo a cargar en 2 minutos');
+    return;
+  }
+  watchdogLoadTicks = 0;
+  return videoWatchdogAvance();
+}
+function videoWatchdogAvance() {
+  const video = document.getElementById('video-player');
+  if (!video || video.style.display !== 'block') {
+    watchdogLastTime = -1;
+    watchdogStallTicks = 0;
+    return;
+  }
+  if (video.error) {
+    recoverVideo('error de decodificacion: ' + video.error.code);
+    return;
+  }
+  if (video.paused || video.ended) {
+    return;
+  }
+  if (video.currentTime === watchdogLastTime) {
+    watchdogStallTicks += 1;
+    if (watchdogStallTicks >= 3) {
+      recoverVideo('el video no avanzo por ~30s');
+    }
+  } else {
+    watchdogStallTicks = 0;
+  }
+  watchdogLastTime = video.currentTime;
+}
+setInterval(videoWatchdog, 10000);
+</script>
+</body>
+</html>

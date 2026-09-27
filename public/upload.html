@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Subir presentación</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    max-width: 560px;
+    margin: 60px auto;
+    padding: 0 20px;
+    background: #f5f6f8;
+    color: #1b1e24;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.sub { color: #666; margin-top: 0; }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+  }
+  label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+  input[type="password"], input[type="file"] {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  #drop {
+    border: 2px dashed #bbb;
+    border-radius: 10px;
+    padding: 30px;
+    text-align: center;
+    color: #777;
+    margin-bottom: 16px;
+    cursor: pointer;
+  }
+  #drop.drag { border-color: #4a7dff; color: #4a7dff; background: #f0f4ff; }
+  button {
+    background: #4a7dff;
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary { background: #eef1f6; color: #333; }
+  #msg { margin-top: 14px; font-size: 14px; }
+  .ok { color: #1a8a3c; }
+  .err { color: #c62828; }
+  #status { font-size: 13px; color: #555; }
+  .barra-wrap { margin-top: 14px; display: none; }
+  .barra { height: 10px; border-radius: 6px; background: #eef1f6; overflow: hidden; }
+  .barra > i { display: block; height: 100%; width: 0%; background: #1a8a3c;
+               border-radius: 6px; transition: width .15s linear; }
+  .barra.indet > i { width: 40%; animation: vaiven 1.2s ease-in-out infinite; }
+  @keyframes vaiven { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+  .barra-txt { margin-top: 8px; font-size: 13px; color: #555; }
+  .barra-aviso { margin-top: 4px; font-size: 13px; color: #b26a00; font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>Subir presentación<span id="screen-badge"></span></h1>
+  <p class="sub">Sube el archivo .pptx o un video manualmente, o gestiona la sincronización automática con SharePoint.</p>
+  <p class="sub"><a href="/upload.html">1 Oficina</a> &middot; <a href="/upload.html?screen=2">2 Recepción</a> &middot; <a href="/upload.html?screen=3">3 Vestidores</a> &middot; <a href="/upload.html?screen=4">4 30 Minutos</a> &middot; <a href="/upload.html?screen=5">5 Entrenamiento Funcional</a> &middot; <a href="/upload.html?screen=6">6 Mostrador</a> &middot; <a href="/upload.html?screen=7">7 Zona Black</a> &middot; <a href="/upload.html?screen=8">8 Zona Cardio</a></p>
+
+  <div class="card">
+    <label for="token">Clave de administrador</label>
+    <input type="password" id="token" placeholder="Clave" autocomplete="new-password" spellcheck="false" autocapitalize="off" autocorrect="off">
+
+    <label>Archivo (.pptx o video: .mp4, .mov, .m4v, .webm)</label>
+    <div id="drop">Arrastra tu archivo aquí o haz clic para elegirlo</div>
+    <input type="file" id="file" accept=".pptx,.mp4,.mov,.m4v,.webm" style="display:none">
+
+    <button id="submit" disabled>Subir presentación</button>
+    <div id="msg"></div>
+  </div>
+
+  <div class="card" id="sharepoint-card">
+    <strong>Sincronización en vivo desde SharePoint</strong>
+    <div id="sharepoint-preview" style="margin-top:10px; font-size:14px; color:#333;">Cargando…</div>
+    <button id="syncNow" class="secondary">Sincronizar ahora</button>
+    <div id="syncMsg" style="margin-top:10px; font-size:14px;"></div>
+
+    <label style="margin-top:24px; display:block; font-weight:600; font-size:14px;">Cambiar enlace (mostrar otra presentación)</label>
+    <input type="text" id="newShareLink" placeholder="https://...sharepoint.com/:p:/g/..." style="width:100%; padding:10px; border-radius:8px; border:1px solid #ccc; box-sizing:border-box; font-size:14px; margin-top:6px;">
+    <small style="color:#888; display:block; margin-top:4px;">El enlace debe crearse en SharePoint/OneDrive con acceso para <strong>"Cualquier persona con el vínculo"</strong> (no restringido a personas específicas); de lo contrario la sincronización automática no podrá leerlo.</small>
+    <div id="ticker-toggle-wrap" style="display:none; margin-top:16px;">
+      <label style="display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px;">
+        <input type="checkbox" id="showTicker" style="width:auto; margin:0;">
+        Mostrar contador de socios en esta pantalla
+      </label>
+    </div>
+    <button id="saveLink" class="secondary">Guardar nuevo enlace</button>
+    <div id="linkMsg" style="margin-top:10px; font-size:14px;"></div>
+  </div>
+
+  <div class="card">
+    <strong>Presentación actual</strong>
+    <div id="status">Consultando…</div>
+  </div>
+
+<script>
+const dropEl = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+const submitBtn = document.getElementById('submit');
+const msgEl = document.getElementById('msg');
+const tokenEl = document.getElementById('token');
+const statusEl = document.getElementById('status');
+const sharepointPreviewEl = document.getElementById('sharepoint-preview');
+const syncMsgEl = document.getElementById('syncMsg');
+const newShareLinkEl = document.getElementById('newShareLink');
+const linkMsgEl = document.getElementById('linkMsg');
+const tickerCheckEl = document.getElementById('showTicker');
+const tickerWrapEl = document.getElementById('ticker-toggle-wrap');
+let tickerInitialized = false;
+const urlParams = new URLSearchParams(location.search);
+const VALID_SCREENS = ['1', '2', '3', '4', '5', '6', '7', '8'];
+const SCREEN = VALID_SCREENS.includes(urlParams.get('screen')) ? urlParams.get('screen') : '1';
+function withScreen(url) {
+  return url + (url.indexOf('?') === -1 ? '?' : '&') + 'screen=' + SCREEN;
+}
+
+tokenEl.value = localStorage.getItem('adminToken') || '';
+
+let selectedFile = null;
+
+dropEl.addEventListener('click', () => fileInput.click());
+dropEl.addEventListener('dragover', e => { e.preventDefault(); dropEl.classList.add('drag'); });
+dropEl.addEventListener('dragleave', () => dropEl.classList.remove('drag'));
+dropEl.addEventListener('drop', e => {
+  e.preventDefault();
+  dropEl.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+});
+
+const ALLOWED_EXT = ['.pptx', '.mp4', '.mov', '.m4v', '.webm'];
+// ---------- barra de progreso de subida ----------
+function fmtMB(b) { return (Number(b) / 1048576).toFixed(1) + ' MB'; }
+
+var PROG_NULO = {
+  pct: function () {}, indeterminada: function () {}, ocultar: function () {},
+};
+
+function crearProgreso(anclaEl) {
+  if (!anclaEl || !anclaEl.parentNode) return PROG_NULO;
+  var wrap = document.createElement('div');
+  wrap.className = 'barra-wrap';
+  wrap.innerHTML =
+    '<div class="barra"><i></i></div>' +
+    '<div class="barra-txt"></div>' +
+    '<div class="barra-aviso">No cierres esta ventana hasta que termine.</div>';
+  anclaEl.parentNode.insertBefore(wrap, anclaEl);
+  var barra = wrap.querySelector('.barra');
+  var relleno = wrap.querySelector('.barra > i');
+  var texto = wrap.querySelector('.barra-txt');
+  return {
+    pct: function (p, txt) {
+      wrap.style.display = 'block';
+      barra.classList.remove('indet');
+      var v = Math.max(0, Math.min(100, p));
+      relleno.style.marginLeft = '0';
+      relleno.style.width = v.toFixed(0) + '%';
+      texto.textContent = txt;
+    },
+    indeterminada: function (txt) {
+      wrap.style.display = 'block';
+      barra.classList.add('indet');
+      relleno.style.width = '';
+      texto.textContent = txt;
+    },
+    ocultar: function () {
+      wrap.style.display = 'none';
+      barra.classList.remove('indet');
+      relleno.style.width = '0%';
+      texto.textContent = '';
+    },
+  };
+}
+
+// fetch() no puede reportar el avance de una subida; XMLHttpRequest si.
+function subirConProgreso(url, archivo, contentType, alAvanzar) {
+  return new Promise(function (resolve, reject) {
+    var x = new XMLHttpRequest();
+    x.open('PUT', url, true);
+    if (contentType) x.setRequestHeader('Content-Type', contentType);
+    x.upload.onprogress = function (ev) {
+      if (ev.lengthComputable && typeof alAvanzar === 'function') alAvanzar(ev.loaded, ev.total);
+    };
+    x.onload = function () {
+      if (x.status >= 200 && x.status < 300) resolve();
+      else reject(new Error('Error al subir el archivo a almacenamiento (' + x.status + ').'));
+    };
+    x.onerror = function () { reject(new Error('Se perdio la conexion durante la subida.')); };
+    x.onabort = function () { reject(new Error('La subida se cancelo.')); };
+    x.send(archivo);
+  });
+}
+
+var prog1 = null;
+function progreso1() {
+  if (!prog1) prog1 = crearProgreso(document.getElementById('msg'));
+  return prog1;
+}
+
+var prog2 = null;
+function progreso2() {
+  if (!prog2) prog2 = crearProgreso(document.getElementById('pl-msg'));
+  return prog2;
+}
+
+function handleFile(file) {
+  const lowerName = file.name.toLowerCase();
+  if (!ALLOWED_EXT.some(ext => lowerName.endsWith(ext))) {
+    msgEl.innerHTML = '<span class="err">Formato no admitido. Usa .pptx, .mp4, .mov, .m4v o .webm.</span>';
+    return;
+  }
+  selectedFile = file;
+  dropEl.textContent = `Archivo seleccionado: ${file.name}`;
+  submitBtn.disabled = false;
+}
+
+submitBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  const token = tokenEl.value.trim();
+  if (!token) {
+    msgEl.innerHTML = '<span class="err">Escribe la clave de administrador.</span>';
+    return;
+  }
+  const MAX_BYTES = 1024 * 1024 * 1024;
+  if (selectedFile.size > MAX_BYTES) {
+    msgEl.innerHTML = '<span class="err">El archivo supera el límite de 1 GB (1024 MB).</span>';
+    return;
+  }
+  localStorage.setItem('adminToken', token);
+
+  submitBtn.disabled = true;
+
+  try {
+    // 1) Pedir una URL firmada para subir directo a Cloud Storage
+    progreso1().pct(0, 'Preparando la subida de ' + selectedFile.name + '...');
+    msgEl.textContent = '';
+    const urlRes = await fetch('/api/upload-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify({ fileSize: selectedFile.size, fileName: selectedFile.name, screen: SCREEN }),
+    });
+    const urlData = await urlRes.json();
+    if (!urlRes.ok || !urlData.ok) throw new Error(urlData.error || 'No se pudo preparar la subida.');
+
+    // 2) Subir el archivo directo a Cloud Storage con esa URL
+    await subirConProgreso(urlData.url, selectedFile, urlData.contentType, function (hechos, total) {
+      progreso1().pct((hechos / total) * 100,
+        'Subiendo ' + selectedFile.name + ' — ' + fmtMB(hechos) + ' de ' + fmtMB(total) +
+        ' (' + Math.round((hechos / total) * 100) + '%)');
+    });
+
+    // 3) Avisar al servidor que ya se subió, para actualizar el estado
+    progreso1().indeterminada('Procesando en el servidor. Si es un video se esta optimizando; puede tardar hasta un par de minutos.');
+    const completeRes = await fetch('/api/upload-complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify({ originalName: selectedFile.name, screen: SCREEN }),
+    });
+    const completeData = await completeRes.json();
+    if (!completeRes.ok || !completeData.ok) throw new Error(completeData.error || 'Error al confirmar la subida.');
+
+    progreso1().ocultar();
+    let detalle = '';
+    if (completeData && completeData.compresion) {
+      detalle = ' Se optimizó de ' + fmtMB(completeData.compresion.antes) +
+        ' a ' + fmtMB(completeData.compresion.despues) + '.';
+    }
+    msgEl.innerHTML = '<span class="ok">Archivo subido correctamente.' + detalle +
+      ' La Smart TV lo tomará automáticamente en unos segundos.</span>';
+    loadStatus();
+  } catch (e) {
+    progreso1().ocultar();
+    msgEl.innerHTML = `<span class="err">Error: ${e.message}</span>`;
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+async function loadStatus() {
+  try {
+    const res = await fetch(withScreen('/api/status'));
+    const data = await res.json();
+    if (data.hasPresentation) {
+      const date = data.uploadedAt ? new Date(data.uploadedAt).toLocaleString('es-MX') : 'desconocida';
+      statusEl.textContent = `${data.originalName || 'presentacion.pptx'} — subida el ${date}`;
+    } else {
+      statusEl.textContent = 'Aún no se ha subido ninguna presentación.';
+    }
+  } catch (e) {
+    statusEl.textContent = 'No se pudo consultar el estado.';
+  }
+}
+
+async function loadShareLinkConfig() {
+  if (SCREEN !== '1') return;
+  const token = tokenEl.value.trim();
+  if (!token) return;
+  try {
+    const res = await fetch('/api/config', { headers: { 'x-admin-token': token } });
+    const data = await res.json();
+    if (!res.ok || !data.ok) return;
+    if (data.config.sharePointShareUrl && !newShareLinkEl.value) {
+      newShareLinkEl.value = data.config.sharePointShareUrl;
+    }
+  } catch (e) {
+    // Se ignora: el campo simplemente queda vacio hasta que se guarde un enlace.
+  }
+}
+
+async function loadSharepointPreview() {
+  if (!['1', '2'].includes(SCREEN)) return;
+  try {
+    const res = await fetch(withScreen('/api/sharepoint-status'));
+    const data = await res.json();
+    if (SCREEN === '2' && tickerCheckEl && !tickerInitialized) {
+      tickerCheckEl.checked = data.showSociosTicker === true;
+      tickerInitialized = true;
+    }
+    if (!data.configured) {
+      sharepointPreviewEl.innerHTML = '<span class="err">La sincronización con SharePoint aún no está configurada en el servidor.</span>';
+      return;
+    }
+    const checked = data.lastCheckedAt ? new Date(data.lastCheckedAt).toLocaleString('es-MX') : '—';
+    const synced = data.lastSyncedAt ? new Date(data.lastSyncedAt).toLocaleString('es-MX') : 'Aún no se ha sincronizado ninguna versión.';
+    let html = `Archivo: <b>${data.sourceName || '—'}</b><br>` +
+      `<small>Última sincronización: ${synced}</small><br>` +
+      `<small>Última revisión: ${checked}</small>`;
+    if (data.error) html += `<br><span class="err">${data.error}</span>`;
+    sharepointPreviewEl.innerHTML = html;
+  } catch (e) {
+    sharepointPreviewEl.textContent = 'No se pudo consultar.';
+  }
+}
+
+document.getElementById('syncNow').addEventListener('click', async () => {
+  const token = tokenEl.value.trim();
+  if (!token) { syncMsgEl.innerHTML = '<span class="err">Escribe la clave de administrador.</span>'; return; }
+  localStorage.setItem('adminToken', token);
+  syncMsgEl.textContent = 'Consultando SharePoint...';
+  try {
+    const res = await fetch(withScreen('/api/sharepoint/sync-now'), { method: 'POST', headers: { 'x-admin-token': token } });
+    const data = await res.json();
+    if (!res.ok) throw new Error((data && data.error) || 'No autorizado');
+    if (data.sharepoint && data.sharepoint.error) throw new Error(data.sharepoint.error);
+    syncMsgEl.innerHTML = '<span class="ok">Revisado.</span>';
+  } catch (e) {
+    syncMsgEl.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+  loadSharepointPreview();
+  loadStatus();
+});
+
+document.getElementById('saveLink').addEventListener('click', async () => {
+  const token = tokenEl.value.trim();
+  if (!token) { linkMsgEl.innerHTML = '<span class="err">Escribe la clave de administrador.</span>'; return; }
+  const shareUrl = newShareLinkEl.value.trim();
+  const onlyTicker = SCREEN === '2' && !shareUrl;
+  if (!shareUrl && !onlyTicker) { linkMsgEl.innerHTML = '<span class="err">Pega el enlace de la nueva presentación.</span>'; return; }
+  localStorage.setItem('adminToken', token);
+  linkMsgEl.textContent = onlyTicker ? 'Guardando...' : 'Guardando y sincronizando...';
+  try {
+    const body = SCREEN === '2'
+      ? Object.assign({ screen: SCREEN, showSociosTicker: !!(tickerCheckEl && tickerCheckEl.checked) }, shareUrl ? { shareUrl } : {})
+      : { shareUrl };
+    const res = await fetch('/api/sharepoint/set-link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error((data && data.error) || 'No autorizado');
+    if (data.sharepoint && data.sharepoint.error) throw new Error(data.sharepoint.error);
+    linkMsgEl.innerHTML = '<span class="ok">Guardado.</span>';
+  } catch (e) {
+    linkMsgEl.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+  loadSharepointPreview();
+  loadStatus();
+});
+
+// ---------- Lista de reproduccion de varios videos (pantallas 3 en adelante) ----------
+const PLAYLIST_SCREENS = ['3', '4', '5', '6', '7', '8'];
+const PLAYLIST_EXT = ['.mp4', '.m4v', '.mov', '.webm'];
+let playlistItems = [];
+let plSelected = [];
+let plDragSlot = null;
+
+function plMsg(html) {
+  const el = document.getElementById('pl-msg');
+  if (el) el.innerHTML = html;
+}
+
+async function plPost(ruta, cuerpo) {
+  const token = tokenEl.value.trim();
+  if (!token) throw new Error('Escribe la clave de administrador.');
+  const res = await fetch('/api/playlist/' + ruta, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+    body: JSON.stringify(Object.assign({ screen: SCREEN }, cuerpo)),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.ok) throw new Error(data.error || 'La operacion no se pudo completar.');
+  return data;
+}
+
+function buildPlaylistCard() {
+  const cards = document.querySelectorAll('.card');
+  if (!cards.length) return;
+  const container = cards[cards.length - 1].parentNode;
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.id = 'playlist-card';
+  card.innerHTML = [
+    '<strong>Lista de reproducci&oacute;n (varios videos)</strong>',
+    '<p style="margin:6px 0 12px; font-size:14px; color:#555; line-height:1.45;">Sube varios videos y ord&eacute;nalos arrastrando los renglones. La pantalla los reproduce de arriba hacia abajo y vuelve a empezar al terminar el &uacute;ltimo. Para que un video salga m&aacute;s veces, usa <b>Repetir</b>: agrega otro rengl&oacute;n del mismo video (sin volver a subirlo) que puedes arrastrar a donde quieras. Si la lista tiene videos, manda sobre el archivo &uacute;nico de arriba.</p>',
+    '<div id="pl-drop" style="border:2px dashed #bbb; border-radius:10px; padding:18px; text-align:center; cursor:pointer; color:#555; font-size:14px;">Arrastra varios videos aqu&iacute; o haz clic para elegirlos</div>',
+    '<input type="file" id="pl-file" accept=".mp4,.mov,.m4v,.webm" multiple style="display:none">',
+    '<button id="pl-add" class="secondary" style="margin-top:10px;" disabled>Agregar a la lista</button>',
+    '<div id="pl-msg" style="margin-top:10px; font-size:14px;"></div>',
+    '<div id="pl-list" style="margin-top:14px;"></div>'
+  ].join('');
+  container.insertBefore(card, cards[cards.length - 1]);
+}
+
+function plBoton(texto, color, borde) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = texto;
+  b.style.cssText = 'background:#fff; color:' + color + '; border:1px solid ' + borde
+    + '; border-radius:6px; padding:5px 12px; font-size:13px; cursor:pointer; width:auto; margin:0;';
+  return b;
+}
+
+function renderPlaylist() {
+  const listEl = document.getElementById('pl-list');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  if (!playlistItems.length) {
+    const empty = document.createElement('div');
+    empty.style.cssText = 'font-size:14px; color:#777;';
+    empty.textContent = 'La lista esta vacia. Esta pantalla usara el archivo unico de arriba.';
+    listEl.appendChild(empty);
+    return;
+  }
+  // Cuantas veces aparece cada archivo, para marcar los repetidos.
+  const veces = {};
+  playlistItems.forEach((it) => { veces[it.video] = (veces[it.video] || 0) + 1; });
+  const vistos = {};
+
+  playlistItems.forEach((item, i) => {
+    vistos[item.video] = (vistos[item.video] || 0) + 1;
+    const row = document.createElement('div');
+    row.draggable = true;
+    row.setAttribute('data-slot', item.slot);
+    row.style.cssText = 'display:flex; align-items:center; gap:10px; padding:10px 12px; margin-bottom:8px; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:grab;';
+    const grip = document.createElement('span');
+    grip.textContent = '☰';
+    grip.style.cssText = 'color:#aaa; font-size:16px;';
+    const num = document.createElement('span');
+    num.textContent = String(i + 1);
+    num.style.cssText = 'font-weight:700; min-width:22px; color:#333;';
+    const name = document.createElement('span');
+    name.textContent = item.name;
+    name.style.cssText = 'flex:1; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;';
+    row.appendChild(grip);
+    row.appendChild(num);
+    row.appendChild(name);
+    if (veces[item.video] > 1) {
+      const tag = document.createElement('span');
+      tag.textContent = 'repetición ' + vistos[item.video] + ' de ' + veces[item.video];
+      tag.style.cssText = 'font-size:12px; color:#1a73e8; background:#e8f0fe; border-radius:10px; padding:3px 9px; white-space:nowrap;';
+      row.appendChild(tag);
+    }
+    const dup = plBoton('Repetir', '#1a73e8', '#b4cbe0');
+    dup.addEventListener('click', () => duplicatePlaylistItem(item.slot));
+    const del = plBoton('Quitar', '#c00', '#e0b4b4');
+    del.addEventListener('click', () => removePlaylistItem(item.slot));
+    row.appendChild(dup);
+    row.appendChild(del);
+
+    row.addEventListener('dragstart', (e) => {
+      plDragSlot = item.slot;
+      row.style.opacity = '0.4';
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', item.slot); } catch (err) {}
+      }
+    });
+    row.addEventListener('dragend', () => { row.style.opacity = '1'; });
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      row.style.borderColor = '#1a73e8';
+    });
+    row.addEventListener('dragleave', () => { row.style.borderColor = '#ddd'; });
+    row.addEventListener('drop', (e) => {
+      e.preventDefault();
+      row.style.borderColor = '#ddd';
+      if (!plDragSlot || plDragSlot === item.slot) return;
+      const from = playlistItems.findIndex((x) => x.slot === plDragSlot);
+      const to = playlistItems.findIndex((x) => x.slot === item.slot);
+      plDragSlot = null;
+      if (from === -1 || to === -1) return;
+      const moved = playlistItems.splice(from, 1)[0];
+      playlistItems.splice(to, 0, moved);
+      renderPlaylist();
+      savePlaylistOrder();
+    });
+    listEl.appendChild(row);
+  });
+}
+
+async function loadPlaylist() {
+  try {
+    const res = await fetch(withScreen('/api/playlist'), { cache: 'no-store' });
+    const data = await res.json();
+    playlistItems = (data && data.items) || [];
+    renderPlaylist();
+  } catch (e) {
+    plMsg('<span class="err">No se pudo consultar la lista.</span>');
+  }
+}
+
+async function savePlaylistOrder() {
+  try {
+    await plPost('reorder', { order: playlistItems.map((it) => it.slot) });
+    plMsg('<span class="ok">Orden guardado.</span>');
+  } catch (e) {
+    plMsg('<span class="err">' + e.message + '</span>');
+    loadPlaylist();
+  }
+}
+
+async function duplicatePlaylistItem(slot) {
+  try {
+    await plPost('duplicate', { slot: slot });
+    plMsg('<span class="ok">Se agrego otra repeticion. Arrastrala a donde la quieras.</span>');
+    loadPlaylist();
+  } catch (e) {
+    plMsg('<span class="err">' + e.message + '</span>');
+  }
+}
+
+async function removePlaylistItem(slot) {
+  try {
+    await plPost('remove', { slot: slot });
+    plMsg('<span class="ok">Rengl&oacute;n quitado de la lista.</span>');
+    loadPlaylist();
+  } catch (e) {
+    plMsg('<span class="err">' + e.message + '</span>');
+  }
+}
+
+function plSetSelected(files) {
+  const videos = files.filter((f) => PLAYLIST_EXT.some((ext) => f.name.toLowerCase().endsWith(ext)));
+  plSelected = videos;
+  const dropEl2 = document.getElementById('pl-drop');
+  const addEl = document.getElementById('pl-add');
+  if (!videos.length) {
+    dropEl2.textContent = 'Arrastra varios videos aqui o haz clic para elegirlos';
+    addEl.disabled = true;
+    if (files.length) plMsg('<span class="err">Solo se admiten videos: .mp4, .m4v, .mov o .webm.</span>');
+    return;
+  }
+  dropEl2.textContent = videos.length === 1
+    ? ('Seleccionado: ' + videos[0].name)
+    : (videos.length + ' videos seleccionados');
+  addEl.disabled = false;
+  plMsg('');
+}
+
+async function addFilesToPlaylist(files) {
+  const token = tokenEl.value.trim();
+  if (!token) {
+    plMsg('<span class="err">Escribe la clave de administrador.</span>');
+    return;
+  }
+  const addEl = document.getElementById('pl-add');
+  addEl.disabled = true;
+  const MAX_BYTES = 1024 * 1024 * 1024;
+  let done = 0;
+  const resumenComp = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file.size > MAX_BYTES) {
+      plMsg('<span class="err">' + file.name + ': supera el limite de 1 GB.</span>');
+      continue;
+    }
+    try {
+      const etq = 'Archivo ' + (i + 1) + ' de ' + files.length + ': ' + file.name;
+      plMsg('');
+      progreso2().pct(0, etq + ' — preparando...');
+      const urlData = await plPost('upload-url', { fileName: file.name, fileSize: file.size });
+      await subirConProgreso(urlData.url, file, urlData.contentType, function (hechos, total) {
+        progreso2().pct((hechos / total) * 100,
+          etq + ' — ' + fmtMB(hechos) + ' de ' + fmtMB(total) +
+          ' (' + Math.round((hechos / total) * 100) + '%)');
+      });
+      progreso2().indeterminada(etq + ' — optimizando el video en el servidor. Puede tardar hasta un par de minutos.');
+      const resAdd = await plPost('add', { itemId: urlData.itemId, originalName: file.name });
+      if (resAdd && resAdd.compresion) {
+        resumenComp.push(file.name + ': ' + fmtMB(resAdd.compresion.antes) +
+          ' → ' + fmtMB(resAdd.compresion.despues));
+      }
+      done += 1;
+    } catch (e) {
+      progreso2().ocultar();
+      plMsg('<span class="err">' + file.name + ': ' + e.message + '</span>');
+    }
+  }
+  progreso2().ocultar();
+  if (done) {
+    const det = resumenComp.length
+      ? '<br><small>' + resumenComp.join('<br>') + '</small>'
+      : '';
+    plMsg('<span class="ok">' + done + ' video(s) agregados. La pantalla tomara la lista en menos de un minuto.</span>' + det);
+  }
+  plSelected = [];
+  document.getElementById('pl-drop').textContent = 'Arrastra varios videos aqui o haz clic para elegirlos';
+  addEl.disabled = true;
+  loadPlaylist();
+}
+
+if (PLAYLIST_SCREENS.indexOf(SCREEN) !== -1) {
+  buildPlaylistCard();
+  const plDropEl = document.getElementById('pl-drop');
+  const plFileEl = document.getElementById('pl-file');
+  const plAddEl = document.getElementById('pl-add');
+  plDropEl.addEventListener('click', () => plFileEl.click());
+  plDropEl.addEventListener('dragover', (e) => { e.preventDefault(); plDropEl.style.borderColor = '#1a73e8'; });
+  plDropEl.addEventListener('dragleave', () => { plDropEl.style.borderColor = '#bbb'; });
+  plDropEl.addEventListener('drop', (e) => {
+    e.preventDefault();
+    plDropEl.style.borderColor = '#bbb';
+    plSetSelected(Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []));
+  });
+  plFileEl.addEventListener('change', () => plSetSelected(Array.prototype.slice.call(plFileEl.files || [])));
+  plAddEl.addEventListener('click', () => { if (plSelected.length) addFilesToPlaylist(plSelected); });
+  loadPlaylist();
+}
+
+const SCREEN_NAMES = {"1": "Oficina", "2": "Recepción", "3": "Vestidores", "4": "30 Minutos", "5": "Entrenamiento Funcional", "6": "Mostrador", "7": "Zona Black", "8": "Zona Cardio"};
+document.getElementById('screen-badge').textContent = ' — Pantalla ' + SCREEN + (SCREEN_NAMES[SCREEN] ? ' · ' + SCREEN_NAMES[SCREEN] : '');
+if (!['1', '2'].includes(SCREEN)) {
+  const sharepointCardEl = document.getElementById('sharepoint-card');
+  if (sharepointCardEl) sharepointCardEl.style.display = 'none';
+}
+if (tickerWrapEl && SCREEN === '2') tickerWrapEl.style.display = 'block';
+loadStatus();
+loadSharepointPreview();
+loadShareLinkConfig();
+setInterval(loadSharepointPreview, 15000);
+setInterval(loadStatus, 15000);
+</script>
+</body>
+</html>

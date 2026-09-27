@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Administración</title>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    max-width: 620px;
+    margin: 60px auto;
+    padding: 0 20px;
+    background: #f5f6f8;
+    color: #1b1e24;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.sub { color: #666; margin-top: 0; }
+  .card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+  }
+  label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; margin-top: 14px; }
+  label:first-child { margin-top: 0; }
+  input[type="text"], input[type="password"], input[type="number"] {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+    font-size: 14px;
+  }
+  small { color: #888; display: block; margin-top: 4px; }
+  button {
+    background: #4a7dff;
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 18px;
+    margin-right: 8px;
+  }
+  button.secondary { background: #eef1f6; color: #333; }
+  #msg { margin-top: 14px; font-size: 14px; }
+  .ok { color: #1a8a3c; }
+  .err { color: #c62828; }
+  #socios-preview { font-size: 14px; color: #333; }
+  #socios-preview b { font-size: 20px; }
+</style>
+</head>
+<body>
+  <h1>Administración — número de socios</h1>
+  <p class="sub">El número de socios se obtiene automáticamente de Power BI, o puedes fijarlo manualmente abajo.</p>
+
+  <div class="card">
+    <label>Clave de administrador</label>
+    <input type="password" id="token" autocomplete="new-password" spellcheck="false" autocapitalize="off" autocorrect="off">
+
+    <label>Segundos entre diapositivas</label>
+    <input type="number" id="interval" min="2" step="1" placeholder="10">
+
+    <label style="display:flex; align-items:center; gap:8px; margin-top:20px; cursor:pointer;">
+      <input type="checkbox" id="overrideEnabled" style="width:auto; margin:0;">
+      Usar número manual (ignorar Power BI)
+    </label>
+    <small>Si activas esta opción, la pantalla mostrará el número que escribas abajo y no se consultará Power BI.</small>
+
+    <label>Número a desplegar (manual)</label>
+    <input type="number" id="overrideValue" min="0" step="1" placeholder="0">
+
+    <button id="save">Guardar</button>
+    <button id="refresh" class="secondary">Probar / refrescar ahora</button>
+    <button id="refreshPowerBI" class="secondary">Actualizar desde Power BI ahora</button>
+    <div id="msg"></div>
+  </div>
+
+  <div class="card">
+    <strong>Vista previa</strong>
+    <div id="socios-preview" style="margin-top:10px;">Cargando…</div>
+  </div>
+
+  <p class="sub" style="margin-top:-8px;">Para gestionar la presentación de la Smart TV (subir un archivo o cambiar el enlace de SharePoint), ve al <a href="/upload.html">panel de subir presentación</a>.</p>
+
+<script>
+const tokenEl = document.getElementById('token');
+const intervalEl = document.getElementById('interval');
+const overrideEnabledEl = document.getElementById('overrideEnabled');
+const overrideValueEl = document.getElementById('overrideValue');
+const msgEl = document.getElementById('msg');
+const previewEl = document.getElementById('socios-preview');
+
+tokenEl.value = localStorage.getItem('adminToken') || '';
+
+async function loadConfig() {
+  const token = tokenEl.value.trim();
+  if (!token) return;
+  try {
+    const res = await fetch('/api/config', { headers: { 'x-admin-token': token } });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || 'No autorizado');
+    intervalEl.value = data.config.slideIntervalSeconds || 10;
+    overrideEnabledEl.checked = !!data.config.manualOverride;
+    overrideValueEl.value = data.config.overrideValue ?? '';
+  } catch (e) {
+    msgEl.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+}
+
+async function loadPreview() {
+  try {
+    const res = await fetch('/api/socios');
+    const data = await res.json();
+    if (data.error) {
+      previewEl.innerHTML = `<span class="err">${data.error}</span>` +
+        (data.count !== null ? `<br>Último valor conocido: <b>${data.count}</b>` : '');
+    } else {
+      const date = data.updatedAt ? new Date(data.updatedAt).toLocaleString('es-MX') : '—';
+      previewEl.innerHTML = `Socios: <b>${data.count}</b><br><small>Fuente: ${data.source || '—'} · Actualizado: ${date}</small>`;
+    }
+  } catch (e) {
+    previewEl.textContent = 'No se pudo consultar.';
+  }
+}
+
+document.getElementById('save').addEventListener('click', async () => {
+  const token = tokenEl.value.trim();
+  if (!token) { msgEl.innerHTML = '<span class="err">Escribe la clave de administrador.</span>'; return; }
+  localStorage.setItem('adminToken', token);
+  msgEl.textContent = 'Guardando...';
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify({
+        slideIntervalSeconds: Number(intervalEl.value) || 10,
+        overrideEnabled: overrideEnabledEl.checked,
+        overrideValue: overrideValueEl.value.trim(),
+        manualOverride: overrideEnabledEl.checked,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || 'Error al guardar');
+    msgEl.innerHTML = '<span class="ok">Guardado.</span>';
+    loadPreview();
+  } catch (e) {
+    msgEl.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+});
+
+document.getElementById('refresh').addEventListener('click', async () => {
+  const token = tokenEl.value.trim();
+  if (!token) { msgEl.innerHTML = '<span class="err">Escribe la clave de administrador.</span>'; return; }
+  msgEl.textContent = 'Consultando...';
+  try {
+    const res = await fetch('/api/socios/refresh', { method: 'POST', headers: { 'x-admin-token': token } });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    msgEl.innerHTML = '<span class="ok">Actualizado.</span>';
+  } catch (e) {
+    msgEl.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+  loadPreview();
+});
+
+document.getElementById('refreshPowerBI').addEventListener('click', async () => {
+  const token = tokenEl.value.trim();
+  if (!token) { msgEl.innerHTML = '<span class="err">Escribe la clave de administrador.</span>'; return; }
+  if (overrideEnabledEl.checked) {
+    msgEl.innerHTML = '<span class="err">Desactiva "Usar numero manual" y da clic en Guardar antes de actualizar desde Power BI.</span>';
+    return;
+  }
+  msgEl.textContent = 'Consultando Power BI...';
+  try {
+    const res = await fetch('/api/powerbi/sync-now', { method: 'POST', headers: { 'x-admin-token': token } });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || (data.powerbiSync && data.powerbiSync.error) || 'No se pudo actualizar desde Power BI.');
+    msgEl.innerHTML = '<span class="ok">Actualizado desde Power BI.</span>';
+  } catch (e) {
+    msgEl.innerHTML = `<span class="err">${e.message}</span>`;
+  }
+  loadPreview();
+});
+
+loadConfig();
+loadPreview();
+setInterval(loadPreview, 15000);
+</script>
+</body>
+</html>
