@@ -357,6 +357,9 @@ async function precargarLista(items) {
     });
     for (const it of items) {
       if (cacheBlobs[it.video]) continue;
+      // Si este archivo ya fallo como copia local en esta TV, no se
+      // vuelve a guardar: se reproduce por red y punto.
+      if (blobsVetados[it.video]) continue;
       try {
         const r = await fetch(urlDirectaItem(it), { cache: 'no-store' });
         if (!r.ok) continue;
@@ -385,6 +388,41 @@ function playlistItemUrl(item) {
   return cacheBlobs[item.video] || urlDirectaItem(item);
 }
 
+// ---- Rescate de copia local inservible ----
+// En algunas Samsung Tizen un blob guardado en memoria deja de ser
+// reproducible y el <video> NO dispara onerror: se queda en el ultimo cuadro
+// para siempre, porque nada vuelve a pedir el archivo por red.
+// Si a los 5 segundos el video no avanzo, se descarta esa copia local y se
+// reintenta el MISMO renglon por red. En el peor caso queda como antes.
+const blobsVetados = {};
+const ESPERA_ARRANQUE_BLOB = 5000;
+let temporizadorBlob = null;
+
+function cancelarVigilanciaBlob() {
+  if (temporizadorBlob) {
+    clearTimeout(temporizadorBlob);
+    temporizadorBlob = null;
+  }
+}
+
+function vigilarArranqueBlob(indice, idVideo) {
+  cancelarVigilanciaBlob();
+  temporizadorBlob = setTimeout(() => {
+    temporizadorBlob = null;
+    if (playlistIndex !== indice) return;
+    const v = document.getElementById('video-player');
+    if (!v) return;
+    if (v.currentTime > 0.1 && !v.paused) return;
+    console.warn('[blob] no arranco; se descarta la copia local y se reintenta por red:', idVideo);
+    blobsVetados[idVideo] = true;
+    try { URL.revokeObjectURL(cacheBlobs[idVideo]); } catch (e) {}
+    bytesEnCache -= (tamBlobs[idVideo] || 0);
+    delete tamBlobs[idVideo];
+    delete cacheBlobs[idVideo];
+    playPlaylistIndex(indice, true);
+  }, ESPERA_ARRANQUE_BLOB);
+}
+
 function playPlaylistIndex(i, force) {
   if (!playlistItems.length) return;
   const total = playlistItems.length;
@@ -404,6 +442,12 @@ function playPlaylistIndex(i, force) {
   video.src = url;
   video.load();
   video.play().catch(() => {});
+  cancelarVigilanciaBlob();
+  // Solo se vigila cuando la fuente es una copia local: por red ya
+  // existe el manejo de onerror de siempre.
+  if (cacheBlobs[playlistItems[playlistIndex].video] === url) {
+    vigilarArranqueBlob(playlistIndex, playlistItems[playlistIndex].video);
+  }
 }
 
 function startPlaylist() {
@@ -588,6 +632,15 @@ function recoverVideoSingle(reason) {
   video.play().catch(() => {});
 }
 let watchdogLoadTicks = 0;
+// Un video en bucle nunca deberia quedarse pausado ni terminado. Si el
+// reinicio del ciclo falla, el elemento se queda asi y antes nadie lo
+// rescataba: la pantalla se quedaba en negro hasta que alguien la
+// recargaba a mano.
+let pausadoTicks = 0;
+let ultimoRescatePausa = 0;
+let rescatesPausa = 0;
+const ESPERA_ENTRE_RESCATES = 60000;
+const MAX_RESCATES_PAUSA = 4;
 function videoWatchdog() {
   const vw = document.getElementById('video-player');
   // Mientras el video todavia esta cargando por primera vez (readyState < 2)
@@ -618,8 +671,27 @@ function videoWatchdogAvance() {
     return;
   }
   if (video.paused || video.ended) {
+    // ~30s de gracia antes de dar por rota la reproduccion.
+    pausadoTicks += 1;
+    if (pausadoTicks < 3) return;
+    // Espera minima entre intentos: reiniciar vuelve a descargar el video
+    // completo, y hacerlo en bucle costaria dinero de verdad.
+    if (Date.now() - ultimoRescatePausa < ESPERA_ENTRE_RESCATES) return;
+    ultimoRescatePausa = Date.now();
+    rescatesPausa += 1;
+    if (rescatesPausa >= MAX_RESCATES_PAUSA) {
+      console.warn('[video-watchdog] Varios reinicios sin exito: recargando la pagina.');
+      rescatesPausa = 0;
+      pausadoTicks = 0;
+      location.reload();
+      return;
+    }
+    recoverVideo('quedo pausado o terminado');
     return;
   }
+  // Reproduccion sana: se limpian los contadores de rescate.
+  pausadoTicks = 0;
+  rescatesPausa = 0;
   if (video.currentTime === watchdogLastTime) {
     watchdogStallTicks += 1;
     if (watchdogStallTicks >= 3) {
