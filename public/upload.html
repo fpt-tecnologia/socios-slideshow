@@ -73,7 +73,7 @@
 <body>
   <h1>Subir presentación<span id="screen-badge"></span></h1>
   <p class="sub">Sube el archivo .pptx o un video manualmente, o gestiona la sincronización automática con SharePoint.</p>
-  <p class="sub"><a href="/upload.html">1 Oficina</a> &middot; <a href="/upload.html?screen=2">2 Recepción</a> &middot; <a href="/upload.html?screen=3">3 Vestidores</a> &middot; <a href="/upload.html?screen=4">4 30 Minutos</a> &middot; <a href="/upload.html?screen=5">5 Entrenamiento Funcional</a> &middot; <a href="/upload.html?screen=6">6 Mostrador</a> &middot; <a href="/upload.html?screen=7">7 Zona Black</a> &middot; <a href="/upload.html?screen=8">8 Zona Cardio</a></p>
+  <p class="sub"><a href="/upload.html">1 Oficina</a> &middot; <a href="/upload.html?screen=2">2 Oficina Recepción</a> &middot; <a href="/upload.html?screen=3">3</a> &middot; <a href="/upload.html?screen=4">4</a> &middot; <a href="/upload.html?screen=5">5</a> &middot; <a href="/upload.html?screen=6">6</a> &middot; <a href="/upload.html?screen=7">7</a> &middot; <a href="/upload.html?screen=8">8</a> &middot; <a href="/upload.html?screen=9">9</a> &middot; <a href="/upload.html?screen=10">10</a></p>
 
   <div class="card">
     <label for="token">Clave de administrador</label>
@@ -659,7 +659,7 @@ if (PLAYLIST_SCREENS.indexOf(SCREEN) !== -1) {
   loadPlaylist();
 }
 
-const SCREEN_NAMES = {"1": "Oficina", "2": "Recepción", "3": "Vestidores", "4": "30 Minutos", "5": "Entrenamiento Funcional", "6": "Mostrador", "7": "Zona Black", "8": "Zona Cardio"};
+const SCREEN_NAMES = {"1": "Oficina", "2": "Oficina Recepción"};
 document.getElementById('screen-badge').textContent = ' — Pantalla ' + SCREEN + (SCREEN_NAMES[SCREEN] ? ' · ' + SCREEN_NAMES[SCREEN] : '');
 if (!['1', '2'].includes(SCREEN)) {
   const sharepointCardEl = document.getElementById('sharepoint-card');

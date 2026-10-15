@@ -64,7 +64,7 @@ const SCREEN2_SHAREPOINT_STATE_OBJECT = 'data/screen-2/sharepoint-sync.json';
 // ---------- Pantallas 3, 4 y 5 (mas simples: solo subir video o presentacion) ----------
 // No tienen sincronizacion con SharePoint ni contador de socios; solo lo esencial
 // para servir el contenido subido manualmente, igual que las demas pantallas.
-const SIMPLE_SCREEN_IDS = ['3', '4', '5', '6', '7', '8'];
+const SIMPLE_SCREEN_IDS = ['3', '4', '5', '6', '7', '8', '9', '10'];
 const SIMPLE_SCREEN_OBJECTS = {
   '3': { content: 'uploads/screen-3/current-content', status: 'data/screen-3/status.json' },
   '4': { content: 'uploads/screen-4/current-content', status: 'data/screen-4/status.json' },
@@ -72,6 +72,8 @@ const SIMPLE_SCREEN_OBJECTS = {
   '6': { content: 'uploads/screen-6/current-content', status: 'data/screen-6/status.json' },
   '7': { content: 'uploads/screen-7/current-content', status: 'data/screen-7/status.json' },
   '8': { content: 'uploads/screen-8/current-content', status: 'data/screen-8/status.json' },
+  '9': { content: 'uploads/screen-9/current-content', status: 'data/screen-9/status.json' },
+  '10': { content: 'uploads/screen-10/current-content', status: 'data/screen-10/status.json' },
 };
 
 // Tipos de archivo admitidos como contenido de una pantalla (presentacion o video).
@@ -168,6 +170,8 @@ const simpleScreenState = {
   '6': { status: { hasPresentation: false, contentType: null, originalName: null, uploadedAt: null } },
   '7': { status: { hasPresentation: false, contentType: null, originalName: null, uploadedAt: null } },
   '8': { status: { hasPresentation: false, contentType: null, originalName: null, uploadedAt: null } },
+  '9': { status: { hasPresentation: false, contentType: null, originalName: null, uploadedAt: null } },
+  '10': { status: { hasPresentation: false, contentType: null, originalName: null, uploadedAt: null } },
 };
 
 // Da acceso uniforme al estado y a las rutas de almacenamiento de una pantalla,
@@ -1537,6 +1541,8 @@ async function start() {
     console.log(`  - Pantalla 6 para la Smart TV:              /display.html?screen=6`);
     console.log(`  - Pantalla 7 para la Smart TV:              /display.html?screen=7`);
     console.log(`  - Pantalla 8 para la Smart TV:              /display.html?screen=8`);
+    console.log(`  - Pantalla 9 para la Smart TV:              /display.html?screen=9`);
+    console.log(`  - Pantalla 10 para la Smart TV:              /display.html?screen=10`);
     console.log(`  - Sincronizacion SharePoint cada ${Math.round(SHAREPOINT_POLL_MS / 60000)} minuto(s) (ambas pantallas).`);
     console.log(`  - Power BI: sincronizacion diaria a las ${POWERBI_POLL_HOUR_UTC}:${String(POWERBI_POLL_MINUTE_UTC).padStart(2, '0')} UTC.`);
   });
