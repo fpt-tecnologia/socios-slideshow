@@ -357,9 +357,6 @@ async function precargarLista(items) {
     });
     for (const it of items) {
       if (cacheBlobs[it.video]) continue;
-      // Si este archivo ya fallo como copia local en esta TV, no se
-      // vuelve a guardar: se reproduce por red y punto.
-      if (blobsVetados[it.video]) continue;
       try {
         const r = await fetch(urlDirectaItem(it), { cache: 'no-store' });
         if (!r.ok) continue;
@@ -388,41 +385,6 @@ function playlistItemUrl(item) {
   return cacheBlobs[item.video] || urlDirectaItem(item);
 }
 
-// ---- Rescate de copia local inservible ----
-// En algunas Samsung Tizen un blob guardado en memoria deja de ser
-// reproducible y el <video> NO dispara onerror: se queda en el ultimo cuadro
-// para siempre, porque nada vuelve a pedir el archivo por red.
-// Si a los 5 segundos el video no avanzo, se descarta esa copia local y se
-// reintenta el MISMO renglon por red. En el peor caso queda como antes.
-const blobsVetados = {};
-const ESPERA_ARRANQUE_BLOB = 5000;
-let temporizadorBlob = null;
-
-function cancelarVigilanciaBlob() {
-  if (temporizadorBlob) {
-    clearTimeout(temporizadorBlob);
-    temporizadorBlob = null;
-  }
-}
-
-function vigilarArranqueBlob(indice, idVideo) {
-  cancelarVigilanciaBlob();
-  temporizadorBlob = setTimeout(() => {
-    temporizadorBlob = null;
-    if (playlistIndex !== indice) return;
-    const v = document.getElementById('video-player');
-    if (!v) return;
-    if (v.currentTime > 0.1 && !v.paused) return;
-    console.warn('[blob] no arranco; se descarta la copia local y se reintenta por red:', idVideo);
-    blobsVetados[idVideo] = true;
-    try { URL.revokeObjectURL(cacheBlobs[idVideo]); } catch (e) {}
-    bytesEnCache -= (tamBlobs[idVideo] || 0);
-    delete tamBlobs[idVideo];
-    delete cacheBlobs[idVideo];
-    playPlaylistIndex(indice, true);
-  }, ESPERA_ARRANQUE_BLOB);
-}
-
 function playPlaylistIndex(i, force) {
   if (!playlistItems.length) return;
   const total = playlistItems.length;
@@ -442,12 +404,6 @@ function playPlaylistIndex(i, force) {
   video.src = url;
   video.load();
   video.play().catch(() => {});
-  cancelarVigilanciaBlob();
-  // Solo se vigila cuando la fuente es una copia local: por red ya
-  // existe el manejo de onerror de siempre.
-  if (cacheBlobs[playlistItems[playlistIndex].video] === url) {
-    vigilarArranqueBlob(playlistIndex, playlistItems[playlistIndex].video);
-  }
 }
 
 function startPlaylist() {
