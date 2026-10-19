@@ -566,6 +566,40 @@ setInterval(updateTicker, 60000);
 // ---------- Vigilante de video (auto-recuperacion si se congela o falla) ----------
 let watchdogLastTime = -1;
 let watchdogStallTicks = 0;
+// ---- Tope de rescates ----
+// Cada rescate de una pantalla sin lista vuelve a pedir el archivo COMPLETO
+// con un ts nuevo, lo que tira la descarga a medias y empieza otra de cero.
+// En la pantalla 2 son 37.8 MB. Sin tope, un enlace que no alcanza a bajarlos
+// antes de que el vigilante lo de por estancado produce un reinicio cada 40 s
+// y decenas de GB al dia. Esto no cura esa pantalla: acota lo que puede
+// costar mientras se cura de otra forma.
+const ESPERA_MIN_RESCATE = 120000;
+const MAX_RESCATES_HORA = 4;
+const MIN_ENTRE_RECARGAS = 1800000;
+let ultimoRescate = 0;
+let ultimaRecarga = 0;
+let rescatesVentana = [];
+
+function puedeRescatar(motivo) {
+  const ahora = Date.now();
+  if (ahora - ultimoRescate < ESPERA_MIN_RESCATE) return false;
+  rescatesVentana = rescatesVentana.filter((t) => ahora - t < 3600000);
+  if (rescatesVentana.length >= MAX_RESCATES_HORA) {
+    console.warn('[video-watchdog] Tope por hora alcanzado; no se reintenta (' + motivo + ').');
+    return false;
+  }
+  ultimoRescate = ahora;
+  rescatesVentana.push(ahora);
+  return true;
+}
+
+function puedeRecargar() {
+  const ahora = Date.now();
+  if (ahora - ultimaRecarga < MIN_ENTRE_RECARGAS) return false;
+  ultimaRecarga = ahora;
+  return true;
+}
+
 function recoverVideo(reason) {
   if (playlistActive) {
     console.warn('[video-watchdog] Recuperando la lista (' + reason + ').');
@@ -580,6 +614,7 @@ function recoverVideoSingle(reason) {
 
   const video = document.getElementById('video-player');
   if (!video) return;
+  if (!puedeRescatar(reason)) return;
   console.warn('[video-watchdog] Recuperando el video (' + reason + ').');
   watchdogLastTime = -1;
   watchdogStallTicks = 0;
@@ -636,9 +671,11 @@ function videoWatchdogAvance() {
     ultimoRescatePausa = Date.now();
     rescatesPausa += 1;
     if (rescatesPausa >= MAX_RESCATES_PAUSA) {
-      console.warn('[video-watchdog] Varios reinicios sin exito: recargando la pagina.');
       rescatesPausa = 0;
       pausadoTicks = 0;
+      // Recargar tambien rebaja el archivo completo: como maximo cada 30 min.
+      if (!puedeRecargar()) return;
+      console.warn('[video-watchdog] Varios reinicios sin exito: recargando la pagina.');
       location.reload();
       return;
     }
