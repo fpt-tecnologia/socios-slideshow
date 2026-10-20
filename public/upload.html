@@ -126,8 +126,13 @@ const tickerCheckEl = document.getElementById('showTicker');
 const tickerWrapEl = document.getElementById('ticker-toggle-wrap');
 let tickerInitialized = false;
 const urlParams = new URLSearchParams(location.search);
-const VALID_SCREENS = ['1', '2', '3', '4', '5', '6', '7', '8'];
-const SCREEN = VALID_SCREENS.includes(urlParams.get('screen')) ? urlParams.get('screen') : '1';
+const VALID_SCREENS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+const PARAM_SCREEN = urlParams.get('screen');
+// Si la URL trae un numero que no esta en la lista, NO se cae a la pantalla 1
+// en silencio: asi fue como una carga hecha en ?screen=10 acabo pisando la
+// pantalla 1. Ahora se avisa y no se deja subir nada.
+const SCREEN_INVALIDO = PARAM_SCREEN !== null && !VALID_SCREENS.includes(PARAM_SCREEN);
+const SCREEN = VALID_SCREENS.includes(PARAM_SCREEN) ? PARAM_SCREEN : '1';
 function withScreen(url) {
   return url + (url.indexOf('?') === -1 ? '?' : '&') + 'screen=' + SCREEN;
 }
@@ -231,10 +236,11 @@ function handleFile(file) {
   }
   selectedFile = file;
   dropEl.textContent = `Archivo seleccionado: ${file.name}`;
-  submitBtn.disabled = false;
+  submitBtn.disabled = SCREEN_INVALIDO;
 }
 
 submitBtn.addEventListener('click', async () => {
+  if (SCREEN_INVALIDO) return;
   if (!selectedFile) return;
   const token = tokenEl.value.trim();
   if (!token) {
@@ -399,7 +405,7 @@ document.getElementById('saveLink').addEventListener('click', async () => {
 });
 
 // ---------- Lista de reproduccion de varios videos (pantallas 3 en adelante) ----------
-const PLAYLIST_SCREENS = ['3', '4', '5', '6', '7', '8'];
+const PLAYLIST_SCREENS = ['3', '4', '5', '6', '7', '8', '9', '10'];
 const PLAYLIST_EXT = ['.mp4', '.m4v', '.mov', '.webm'];
 let playlistItems = [];
 let plSelected = [];
@@ -660,7 +666,40 @@ if (PLAYLIST_SCREENS.indexOf(SCREEN) !== -1) {
 }
 
 const SCREEN_NAMES = {"1": "Oficina", "2": "Oficina Recepción"};
-document.getElementById('screen-badge').textContent = ' — Pantalla ' + SCREEN + (SCREEN_NAMES[SCREEN] ? ' · ' + SCREEN_NAMES[SCREEN] : '');
+const NOMBRE_PANTALLA = 'Pantalla ' + SCREEN + (SCREEN_NAMES[SCREEN] ? ' · ' + SCREEN_NAMES[SCREEN] : '');
+document.getElementById('screen-badge').textContent = ' — ' + NOMBRE_PANTALLA;
+// El destino sale de la URL, asi que tiene que estar a la vista de quien da
+// clic: en el titulo, en el enlace resaltado y en el propio boton.
+submitBtn.textContent = 'Subir a ' + NOMBRE_PANTALLA;
+Array.prototype.slice.call(document.querySelectorAll('p.sub a[href*="upload.html"]')).forEach(function (a) {
+  var h = a.getAttribute('href') || '';
+  var m = h.match(/screen=(\d+)/);
+  var s = m ? m[1] : '1';
+  if (s === SCREEN) {
+    a.style.background = '#1a73e8';
+    a.style.color = '#fff';
+    a.style.padding = '2px 8px';
+    a.style.borderRadius = '6px';
+    a.style.textDecoration = 'none';
+    a.style.fontWeight = '700';
+  }
+});
+if (SCREEN_INVALIDO) {
+  var aviso = document.createElement('p');
+  aviso.style.cssText = 'color:#b00020; font-weight:700; border:2px solid #b00020; border-radius:8px; padding:10px; margin:10px 0;';
+  aviso.textContent = 'La pantalla "' + PARAM_SCREEN + '" no existe. No se subio nada. Elige una pantalla de la lista de arriba.';
+  var h1El = document.querySelector('h1');
+  if (h1El) h1El.insertAdjacentElement('afterend', aviso);
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Pantalla no valida';
+  submitBtn.style.background = '#999';
+}
+if (PLAYLIST_SCREENS.indexOf(SCREEN) !== -1) {
+  var nota = document.createElement('div');
+  nota.style.cssText = 'margin-top:10px; font-size:13px; color:#b26a00; font-weight:600; line-height:1.45;';
+  nota.textContent = 'Esta pantalla trabaja con lista de reproduccion. Lo normal aqui es usar la lista de mas abajo; este archivo unico solo se ve si la lista esta vacia.';
+  if (msgEl) msgEl.insertAdjacentElement('beforebegin', nota);
+}
 if (!['1', '2'].includes(SCREEN)) {
   const sharepointCardEl = document.getElementById('sharepoint-card');
   if (sharepointCardEl) sharepointCardEl.style.display = 'none';
