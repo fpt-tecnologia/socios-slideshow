@@ -141,8 +141,14 @@
 let lastUploadedAt = null;
 let presentationInitialized = false;
 const urlParams = new URLSearchParams(location.search);
-const VALID_SCREENS = ['1', '2', '3', '4', '5', '6', '7', '8'];
+const VALID_SCREENS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
 const SCREEN = VALID_SCREENS.includes(urlParams.get('screen')) ? urlParams.get('screen') : '1';
+// El contador de socios es solo de corporativo: pantallas 1 y 2. Se decide
+// aqui, por numero de pantalla y antes de cualquier consulta al servidor, para
+// que ninguna respuesta ni fallo de red pueda encenderlo en las demas.
+const SCREENS_CON_TICKER = ['1', '2'];
+const MUESTRA_TICKER = SCREENS_CON_TICKER.includes(SCREEN);
+if (!MUESTRA_TICKER) document.body.classList.add('no-ticker');
 function withScreen(url) {
   return url + (url.indexOf('?') === -1 ? '?' : '&') + 'screen=' + SCREEN;
 }
@@ -170,7 +176,7 @@ function construirTextoTicker(data) {
 }
 
 async function updateTicker() {
-  if (['3','4','5','6','7','8'].includes(SCREEN)) return;
+  if (!MUESTRA_TICKER) return;
   try {
     const data = await fetchJSON('/api/socios');
     const marquee = document.getElementById('marquee');
@@ -486,7 +492,11 @@ async function checkStatusLoop() {
       fetchJSON(withScreen('/api/display-config')),
     ]);
 
-    document.body.classList.toggle('no-ticker', displayConfig.showSociosTicker === false);
+    // Solo las pantallas con ticker obedecen a la configuracion. En las demas
+    // la clase ya quedo puesta al cargar y aqui no se quita nunca.
+    if (MUESTRA_TICKER) {
+      document.body.classList.toggle('no-ticker', displayConfig.showSociosTicker === false);
+    }
 
     if (!status.hasPresentation) {
       document.getElementById('empty-state').style.display = 'flex';
