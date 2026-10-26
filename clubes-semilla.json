@@ -1,0 +1,443 @@
+{
+  "actualizado": "2026-10-26",
+  "plantilla": {
+    "1": "3",
+    "2": "4",
+    "3": "5",
+    "4": "6"
+  },
+  "clubes": [
+    {
+      "codigo": "centrosantafe",
+      "nombre": "Centro Santa Fé",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "gransur",
+      "nombre": "Gran Sur",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "izazaga",
+      "nombre": "Izazaga",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Por abrir"
+    },
+    {
+      "codigo": "melt-polanco",
+      "nombre": "Melt Polanco",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Por abrir"
+    },
+    {
+      "codigo": "laspalmas",
+      "nombre": "Multiplaza Las Palmas",
+      "region": "Región 1",
+      "ciudad": "Acapulco",
+      "estado": "Guerrero",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "acueducto",
+      "nombre": "PF Acueducto",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "altolivo",
+      "nombre": "PF Altolivo",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "cumbreslaviga",
+      "nombre": "PF Cumbres 1188",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "oceania",
+      "nombre": "PF Encuentro Oceania",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "cuernavaca",
+      "nombre": "PF Galerías Cuernavaca",
+      "region": "Región 1",
+      "ciudad": "Cuernavaca",
+      "estado": "Morelos",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "mixcoac",
+      "nombre": "PF Mixcoac",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "acoxpa",
+      "nombre": "PF Paseo Acoxpa",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "tlatelolco",
+      "nombre": "PF Tlatelolco",
+      "region": "Región 1",
+      "ciudad": "CDMX",
+      "estado": "Ciudad de México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "canek",
+      "nombre": "Canek",
+      "region": "Región 2",
+      "ciudad": "Mérida",
+      "estado": "Yucatán",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "cuatrocaminos",
+      "nombre": "Cuatro Caminos",
+      "region": "Región 2",
+      "ciudad": "Estado de México",
+      "estado": "México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "harbor",
+      "nombre": "Harbor",
+      "region": "Región 2",
+      "ciudad": "Mérida",
+      "estado": "Yucatán",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "maleconlasamericas",
+      "nombre": "Malecon Las Americas",
+      "region": "Región 2",
+      "ciudad": "Cancún",
+      "estado": "Quintana Roo",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "centerplaza",
+      "nombre": "PF Center Plazas",
+      "region": "Región 2",
+      "ciudad": "Estado de México",
+      "estado": "México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "centrolasamericas",
+      "nombre": "PF Centro Las Americas",
+      "region": "Región 2",
+      "ciudad": "Estado de México",
+      "estado": "México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "coacalco",
+      "nombre": "PF Coacalco",
+      "region": "Región 2",
+      "ciudad": "Estado de México",
+      "estado": "México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "valledorado",
+      "nombre": "PF Multiplaza Valle Dorado",
+      "region": "Región 2",
+      "ciudad": "Estado de México",
+      "estado": "México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "sanmarcos",
+      "nombre": "PF Plaza San Marcos",
+      "region": "Región 2",
+      "ciudad": "Estado de México",
+      "estado": "México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "satelite",
+      "nombre": "PF Plaza Satelite",
+      "region": "Región 2",
+      "ciudad": "Estado de México",
+      "estado": "México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "tollocan",
+      "nombre": "PF Tollocan",
+      "region": "Región 2",
+      "ciudad": "Estado de México",
+      "estado": "México",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "escobedo",
+      "nombre": "Escobedo",
+      "region": "Región 3",
+      "ciudad": "Nuevo León",
+      "estado": "Nuevo León",
+      "estatus": "Por abrir"
+    },
+    {
+      "codigo": "arcadia",
+      "nombre": "PF Arcadia",
+      "region": "Región 3",
+      "ciudad": "Nuevo León",
+      "estado": "Nuevo León",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "elmolino",
+      "nombre": "PF El Molino",
+      "region": "Región 3",
+      "ciudad": "Nuevo León",
+      "estado": "Nuevo León",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "lagranplazamazatlan",
+      "nombre": "PF Gran Plaza Mazatlán",
+      "region": "Región 3",
+      "ciudad": "Mazatlán",
+      "estado": "Sinaloa",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "laestanzuela",
+      "nombre": "PF La Estanzuela",
+      "region": "Región 3",
+      "ciudad": "Nuevo León",
+      "estado": "Nuevo León",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "lindavista",
+      "nombre": "PF Lindavista",
+      "region": "Región 3",
+      "ciudad": "Nuevo León",
+      "estado": "Nuevo León",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "santacatarina",
+      "nombre": "PF Santa Catarina",
+      "region": "Región 3",
+      "ciudad": "Nuevo León",
+      "estado": "Nuevo León",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "santaisabel",
+      "nombre": "PF Santa Isabel",
+      "region": "Región 3",
+      "ciudad": "Coahuila",
+      "estado": "Coahuila",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "zapataculiacan",
+      "nombre": "Zapata Culiacan",
+      "region": "Región 3",
+      "ciudad": "Culiacán",
+      "estado": "Sinaloa",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "celta",
+      "nombre": "Celta Lopez Mateos",
+      "region": "Región 4",
+      "ciudad": "Guadalajara",
+      "estado": "Jalisco",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "el-refugio",
+      "nombre": "El Refugio",
+      "region": "Región 4",
+      "ciudad": "Querétaro",
+      "estado": "Querétaro",
+      "estatus": "Por abrir"
+    },
+    {
+      "codigo": "estadio",
+      "nombre": "Estadio Guadalajara",
+      "region": "Región 4",
+      "ciudad": "Guadalajara",
+      "estado": "Jalisco",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "galerias",
+      "nombre": "Galerias Guadalajara",
+      "region": "Región 4",
+      "ciudad": "Guadalajara",
+      "estado": "Jalisco",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "antea",
+      "nombre": "PF Antea",
+      "region": "Región 4",
+      "ciudad": "Querétaro",
+      "estado": "Querétaro",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "glorieta",
+      "nombre": "PF Glorieta",
+      "region": "Región 4",
+      "ciudad": "San Luis Potosí",
+      "estado": "San Luis Potosí",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "candiles",
+      "nombre": "PF Plaza Candiles",
+      "region": "Región 4",
+      "ciudad": "Querétaro",
+      "estado": "Querétaro",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "cimatario",
+      "nombre": "PF Plaza Cimatario",
+      "region": "Región 4",
+      "ciudad": "Querétaro",
+      "estado": "Querétaro",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "plazadelangel",
+      "nombre": "PF Plaza Del Angel",
+      "region": "Región 4",
+      "ciudad": "Guadalajara",
+      "estado": "Jalisco",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "puntoleon",
+      "nombre": "PF Punto León",
+      "region": "Región 4",
+      "ciudad": "León",
+      "estado": "Guanajuato",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "rionilo",
+      "nombre": "PF Punto Rio Nilo",
+      "region": "Región 4",
+      "ciudad": "Guadalajara",
+      "estado": "Jalisco",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "thepark",
+      "nombre": "PF The Park",
+      "region": "Región 4",
+      "ciudad": "San Luis Potosí",
+      "estado": "San Luis Potosí",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "parquevertice",
+      "nombre": "Parque Vertice",
+      "region": "Región 4",
+      "ciudad": "León",
+      "estado": "Guanajuato",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "puntosur",
+      "nombre": "Punto Sur",
+      "region": "Región 4",
+      "ciudad": "Guadalajara",
+      "estado": "Jalisco",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "andamar",
+      "nombre": "Andamar",
+      "region": "Región 5",
+      "ciudad": "Veracruz",
+      "estado": "Veracruz",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "lospinos",
+      "nombre": "Los Pinos",
+      "region": "Región 5",
+      "ciudad": "Veracruz",
+      "estado": "Veracruz",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "angelopolis",
+      "nombre": "PF Angelópolis",
+      "region": "Región 5",
+      "ciudad": "Puebla",
+      "estado": "Puebla",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "jardinesxalapa",
+      "nombre": "PF Jardines Xalapa",
+      "region": "Región 5",
+      "ciudad": "Veracruz",
+      "estado": "Veracruz",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "lapaz",
+      "nombre": "PF La Paz Puebla",
+      "region": "Región 5",
+      "ciudad": "Puebla",
+      "estado": "Puebla",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "torrecillas",
+      "nombre": "PF Plaza Torrecillas",
+      "region": "Región 5",
+      "ciudad": "Puebla",
+      "estado": "Puebla",
+      "estatus": "Abierto"
+    },
+    {
+      "codigo": "villaverde",
+      "nombre": "PF Serviplaza Villa Verde",
+      "region": "Región 5",
+      "ciudad": "Puebla",
+      "estado": "Puebla",
+      "estatus": "Abierto"
+    }
+  ]
+}

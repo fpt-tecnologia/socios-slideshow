@@ -127,14 +127,30 @@ const tickerWrapEl = document.getElementById('ticker-toggle-wrap');
 let tickerInitialized = false;
 const urlParams = new URLSearchParams(location.search);
 const VALID_SCREENS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+const CLUB_SCREENS = ['1', '2', '3', '4'];
 const PARAM_SCREEN = urlParams.get('screen');
-// Si la URL trae un numero que no esta en la lista, NO se cae a la pantalla 1
-// en silencio: asi fue como una carga hecha en ?screen=10 acabo pisando la
-// pantalla 1. Ahora se avisa y no se deja subir nada.
-const SCREEN_INVALIDO = PARAM_SCREEN !== null && !VALID_SCREENS.includes(PARAM_SCREEN);
-const SCREEN = VALID_SCREENS.includes(PARAM_SCREEN) ? PARAM_SCREEN : '1';
+const PARAM_CLUB = (urlParams.get('club') || '').trim().toLowerCase();
+const CLUB = /^[a-z0-9][a-z0-9-]{1,39}$/.test(PARAM_CLUB) ? PARAM_CLUB : '';
+const CLUB_MAL_ESCRITO = urlParams.get('club') !== null && !CLUB;
+const PANTALLAS_VALIDAS = CLUB ? CLUB_SCREENS : VALID_SCREENS;
+// Si la URL trae algo que no esta en la lista, NO se cae a la pantalla 1 en
+// silencio: asi fue como una carga hecha en ?screen=10 acabo pisando la
+// pantalla 1. Ahora se avisa y no se deja subir nada. Con un club es igual de
+// importante: una subida jamas debe acabar en el club equivocado.
+const SCREEN_INVALIDO = CLUB_MAL_ESCRITO ||
+  (PARAM_SCREEN !== null && !PANTALLAS_VALIDAS.includes(PARAM_SCREEN));
+const SCREEN = PANTALLAS_VALIDAS.includes(PARAM_SCREEN) ? PARAM_SCREEN : '1';
+// Hasta que el servidor confirme que el club existe no se deja subir nada.
+let CLUB_SIN_VERIFICAR = Boolean(CLUB);
+let CLUB_RECHAZADO = false;
+let NOMBRE_CLUB = CLUB;
+function bloqueado() {
+  return SCREEN_INVALIDO || CLUB_RECHAZADO || CLUB_SIN_VERIFICAR;
+}
+const CUERPO_PANTALLA = CLUB ? { screen: SCREEN, club: CLUB } : { screen: SCREEN };
 function withScreen(url) {
-  return url + (url.indexOf('?') === -1 ? '?' : '&') + 'screen=' + SCREEN;
+  const sep = url.indexOf('?') === -1 ? '?' : '&';
+  return url + sep + 'screen=' + SCREEN + (CLUB ? '&club=' + encodeURIComponent(CLUB) : '');
 }
 
 tokenEl.value = localStorage.getItem('adminToken') || '';
@@ -236,11 +252,11 @@ function handleFile(file) {
   }
   selectedFile = file;
   dropEl.textContent = `Archivo seleccionado: ${file.name}`;
-  submitBtn.disabled = SCREEN_INVALIDO;
+  submitBtn.disabled = bloqueado();
 }
 
 submitBtn.addEventListener('click', async () => {
-  if (SCREEN_INVALIDO) return;
+  if (bloqueado()) return;
   if (!selectedFile) return;
   const token = tokenEl.value.trim();
   if (!token) {
@@ -263,7 +279,7 @@ submitBtn.addEventListener('click', async () => {
     const urlRes = await fetch('/api/upload-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
-      body: JSON.stringify({ fileSize: selectedFile.size, fileName: selectedFile.name, screen: SCREEN }),
+      body: JSON.stringify(Object.assign({ fileSize: selectedFile.size, fileName: selectedFile.name }, CUERPO_PANTALLA)),
     });
     const urlData = await urlRes.json();
     if (!urlRes.ok || !urlData.ok) throw new Error(urlData.error || 'No se pudo preparar la subida.');
@@ -280,7 +296,7 @@ submitBtn.addEventListener('click', async () => {
     const completeRes = await fetch('/api/upload-complete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
-      body: JSON.stringify({ originalName: selectedFile.name, screen: SCREEN }),
+      body: JSON.stringify(Object.assign({ originalName: selectedFile.name }, CUERPO_PANTALLA)),
     });
     const completeData = await completeRes.json();
     if (!completeRes.ok || !completeData.ok) throw new Error(completeData.error || 'Error al confirmar la subida.');
@@ -422,7 +438,7 @@ async function plPost(ruta, cuerpo) {
   const res = await fetch('/api/playlist/' + ruta, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-admin-token': token },
-    body: JSON.stringify(Object.assign({ screen: SCREEN }, cuerpo)),
+    body: JSON.stringify(Object.assign({}, CUERPO_PANTALLA, cuerpo)),
   });
   const data = await res.json();
   if (!res.ok || !data.ok) throw new Error(data.error || 'La operacion no se pudo completar.');
@@ -647,7 +663,7 @@ async function addFilesToPlaylist(files) {
   loadPlaylist();
 }
 
-if (PLAYLIST_SCREENS.indexOf(SCREEN) !== -1) {
+if (CLUB || PLAYLIST_SCREENS.indexOf(SCREEN) !== -1) {
   buildPlaylistCard();
   const plDropEl = document.getElementById('pl-drop');
   const plFileEl = document.getElementById('pl-file');
@@ -666,7 +682,9 @@ if (PLAYLIST_SCREENS.indexOf(SCREEN) !== -1) {
 }
 
 const SCREEN_NAMES = {"1": "Oficina", "2": "Oficina Recepción"};
-const NOMBRE_PANTALLA = 'Pantalla ' + SCREEN + (SCREEN_NAMES[SCREEN] ? ' · ' + SCREEN_NAMES[SCREEN] : '');
+const NOMBRE_PANTALLA = CLUB
+  ? ('Pantalla ' + SCREEN + ' · ' + CLUB)
+  : ('Pantalla ' + SCREEN + (SCREEN_NAMES[SCREEN] ? ' · ' + SCREEN_NAMES[SCREEN] : ''));
 document.getElementById('screen-badge').textContent = ' — ' + NOMBRE_PANTALLA;
 // El destino sale de la URL, asi que tiene que estar a la vista de quien da
 // clic: en el titulo, en el enlace resaltado y en el propio boton.
@@ -686,30 +704,103 @@ Array.prototype.slice.call(document.querySelectorAll('p.sub a[href*="upload.html
 });
 if (SCREEN_INVALIDO) {
   var aviso = document.createElement('p');
+  aviso.className = 'aviso-bloqueo';
   aviso.style.cssText = 'color:#b00020; font-weight:700; border:2px solid #b00020; border-radius:8px; padding:10px; margin:10px 0;';
-  aviso.textContent = 'La pantalla "' + PARAM_SCREEN + '" no existe. No se subio nada. Elige una pantalla de la lista de arriba.';
+  aviso.textContent = CLUB_MAL_ESCRITO
+    ? 'El codigo de club "' + urlParams.get('club') + '" no es valido. No se subio nada.'
+    : (CLUB
+        ? 'Un club solo tiene las pantallas 1 a 4. No se subio nada.'
+        : 'La pantalla "' + PARAM_SCREEN + '" no existe. No se subio nada. Elige una pantalla de la lista de arriba.');
   var h1El = document.querySelector('h1');
   if (h1El) h1El.insertAdjacentElement('afterend', aviso);
   submitBtn.disabled = true;
   submitBtn.textContent = 'Pantalla no valida';
   submitBtn.style.background = '#999';
 }
-if (PLAYLIST_SCREENS.indexOf(SCREEN) !== -1) {
+// ---- Modo club ----
+// El menu de arriba se cambia por las 4 pantallas de ESTE club, y no se deja
+// subir nada hasta que el servidor confirma que el club existe de verdad.
+if (CLUB) {
+  var navEl = document.querySelector('p.sub a[href*="upload.html"]');
+  navEl = navEl ? navEl.parentNode : null;
+  if (navEl) {
+    navEl.innerHTML = '';
+    var volver = document.createElement('a');
+    volver.href = '/';
+    volver.textContent = 'Todos los clubes';
+    navEl.appendChild(volver);
+    for (var ci = 1; ci <= 4; ci++) {
+      navEl.appendChild(document.createTextNode(' · '));
+      var a = document.createElement('a');
+      a.href = '/upload.html?club=' + encodeURIComponent(CLUB) + '&screen=' + ci;
+      a.textContent = 'Pantalla ' + ci;
+      if (String(ci) === SCREEN) {
+        a.style.cssText = 'background:#1a73e8; color:#fff; padding:2px 8px; border-radius:6px; text-decoration:none; font-weight:700;';
+      }
+      navEl.appendChild(a);
+    }
+    var verTv = document.createElement('div');
+    verTv.style.cssText = 'margin-top:8px; font-size:13px;';
+    var aTv = document.createElement('a');
+    aTv.href = '/display.html?club=' + encodeURIComponent(CLUB) + '&screen=' + SCREEN;
+    aTv.textContent = 'Abrir esta pantalla en la TV';
+    verTv.appendChild(aTv);
+    navEl.insertAdjacentElement('afterend', verTv);
+  }
+  if (!CLUB_MAL_ESCRITO) {
+    submitBtn.disabled = true;
+    fetch('/api/clubes', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var hallado = ((d && d.clubes) || []).filter(function (c) { return c.codigo === CLUB; })[0];
+        CLUB_SIN_VERIFICAR = false;
+        if (!hallado) {
+          CLUB_RECHAZADO = true;
+          var av = document.createElement('p');
+          av.style.cssText = 'color:#b00020; font-weight:700; border:2px solid #b00020; border-radius:8px; padding:10px; margin:10px 0;';
+          av.textContent = 'El club "' + CLUB + '" no esta dado de alta. No se subio nada. Da de alta el club primero en Administrar clubes.';
+          var h1c = document.querySelector('h1');
+          if (h1c) h1c.insertAdjacentElement('afterend', av);
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Club no valido';
+          submitBtn.style.background = '#999';
+          return;
+        }
+        NOMBRE_CLUB = hallado.nombre;
+        // Si la pantalla de la direccion no existe dentro del club, el aviso
+        // rojo y el bloqueo mandan: esta respuesta no los puede deshacer.
+        if (!SCREEN_INVALIDO) {
+          document.getElementById('screen-badge').textContent = ' — ' + hallado.nombre + ' · Pantalla ' + SCREEN;
+          document.title = hallado.nombre + ' · Pantalla ' + SCREEN;
+          submitBtn.textContent = 'Subir a ' + hallado.nombre + ' · Pantalla ' + SCREEN;
+        }
+        submitBtn.disabled = bloqueado() || !selectedFile;
+      })
+      .catch(function () {
+        CLUB_SIN_VERIFICAR = false;
+        submitBtn.disabled = bloqueado() || !selectedFile;
+      });
+  }
+}
+
+if (CLUB || PLAYLIST_SCREENS.indexOf(SCREEN) !== -1) {
   var nota = document.createElement('div');
   nota.style.cssText = 'margin-top:10px; font-size:13px; color:#b26a00; font-weight:600; line-height:1.45;';
   nota.textContent = 'Esta pantalla trabaja con lista de reproduccion. Lo normal aqui es usar la lista de mas abajo; este archivo unico solo se ve si la lista esta vacia.';
   if (msgEl) msgEl.insertAdjacentElement('beforebegin', nota);
 }
-if (!['1', '2'].includes(SCREEN)) {
+if (CLUB || !['1', '2'].includes(SCREEN)) {
   const sharepointCardEl = document.getElementById('sharepoint-card');
   if (sharepointCardEl) sharepointCardEl.style.display = 'none';
 }
-if (tickerWrapEl && SCREEN === '2') tickerWrapEl.style.display = 'block';
+if (tickerWrapEl && !CLUB && SCREEN === '2') tickerWrapEl.style.display = 'block';
 loadStatus();
-loadSharepointPreview();
-loadShareLinkConfig();
-setInterval(loadSharepointPreview, 15000);
 setInterval(loadStatus, 15000);
+if (!CLUB) {
+  loadSharepointPreview();
+  loadShareLinkConfig();
+  setInterval(loadSharepointPreview, 15000);
+}
 </script>
 </body>
 </html>

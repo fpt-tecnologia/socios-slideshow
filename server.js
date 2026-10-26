@@ -186,11 +186,18 @@ const simpleScreenState = {
 const simplePlaylists = {};
 for (const plId of SIMPLE_SCREEN_IDS) simplePlaylists[plId] = { items: [], updatedAt: null };
 
+// Una "clave" es el numero de una pantalla global ('1'..'10') o la clave
+// interna de una pantalla de club ('club:<codigo>:<1-4>'). Para las globales
+// estas rutas son byte por byte las de siempre.
+function carpetaDeClave(clave) {
+  const c = parseClaveClub(clave);
+  return c ? ('clubes/' + c.codigo + '/screen-' + c.n) : ('screen-' + clave);
+}
 function playlistObjectName(screenId) {
-  return `data/screen-${screenId}/playlist.json`;
+  return 'data/' + carpetaDeClave(screenId) + '/playlist.json';
 }
 function playlistItemObjectName(screenId, videoId) {
-  return `uploads/screen-${screenId}/playlist/${videoId}`;
+  return 'uploads/' + carpetaDeClave(screenId) + '/playlist/' + videoId;
 }
 function asPlaylistScreen(value) {
   const s = String(value || '').trim();
@@ -239,7 +246,148 @@ async function deleteOrphanVideo(screenId, videoId) {
   }
 }
 
+
+// ---------- Administracion por club ----------
+// Cada club tiene sus propias 4 pantallas, numeradas 1 a 4 DENTRO del club y
+// guardadas en su propio arbol de archivos. Nada de lo que ya existe cambia:
+// las pantallas globales 1 a 10 siguen usando exactamente las mismas rutas.
+// Mientras un club no suba contenido propio, sus pantallas sirven el de la
+// pantalla global que le toca por plantilla. Asi, migrar una TV es solo
+// cambiarle la direccion: lo que se ve en la pared no cambia.
+const CLUBES_OBJECT = 'data/clubes.json';
+const CLUB_SCREEN_IDS = ['1', '2', '3', '4'];
+const PLANTILLA_POR_DEFECTO = { '1': '3', '2': '4', '3': '5', '4': '6' };
+let clubes = { actualizado: null, plantilla: Object.assign({}, PLANTILLA_POR_DEFECTO), clubes: [] };
+const clubesPorCodigo = new Map();
+
+function esCodigoClub(valor) {
+  return /^[a-z0-9][a-z0-9-]{1,39}$/.test(String(valor || ''));
+}
+function reindexarClubes() {
+  clubesPorCodigo.clear();
+  for (const c of ((clubes && clubes.clubes) || [])) {
+    if (c && esCodigoClub(c.codigo)) clubesPorCodigo.set(c.codigo, c);
+  }
+}
+// A que pantalla global le copia una pantalla de club mientras no tenga
+// contenido propio. Es configurable para que la migracion no dependa de que
+// yo adivine que zona es cada pantalla.
+function plantillaPara(n) {
+  const p = (clubes && clubes.plantilla) || PLANTILLA_POR_DEFECTO;
+  const destino = String(p[String(n)] || PLANTILLA_POR_DEFECTO[String(n)] || '3');
+  return SIMPLE_SCREEN_IDS.indexOf(destino) !== -1 ? destino : '3';
+}
+// Clave interna de una pantalla de club. Las globales siguen siendo su numero
+// pelado ('1'..'10'), por lo que ninguna ruta de archivo existente se mueve.
+function claveDeClub(codigo, n) {
+  return 'club:' + codigo + ':' + n;
+}
+function parseClaveClub(valor) {
+  const m = /^club:([a-z0-9][a-z0-9-]{1,39}):([1-4])$/.exec(String(valor || ''));
+  return m ? { codigo: m[1], n: m[2] } : null;
+}
+function objetosDeClub(clave) {
+  const c = parseClaveClub(clave);
+  if (!c) return null;
+  return {
+    content: 'uploads/clubes/' + c.codigo + '/screen-' + c.n + '/current-content',
+    status: 'data/clubes/' + c.codigo + '/screen-' + c.n + '/status.json',
+  };
+}
+// Punto unico donde se decide a que pantalla apunta una peticion. Si viene un
+// club que no existe NUNCA se cae en silencio a una pantalla global: se
+// devuelve un error. Ese silencio fue justo lo que una vez piso el contenido
+// de la pantalla 1.
+function resolverClave(screenRaw, clubRaw) {
+  const club = String(clubRaw === null || clubRaw === undefined ? '' : clubRaw).trim();
+  if (!club) return { clave: normalizeScreenId(screenRaw) };
+  if (!esCodigoClub(club) || !clubesPorCodigo.has(club)) {
+    return { error: 'El club "' + club.slice(0, 40) + '" no existe. No se hizo nada.' };
+  }
+  const n = String(screenRaw === null || screenRaw === undefined ? '' : screenRaw).trim();
+  if (CLUB_SCREEN_IDS.indexOf(n) === -1) {
+    return { error: 'Un club solo tiene las pantallas 1 a 4.' };
+  }
+  return { clave: claveDeClub(club, n), club: club, n: n };
+}
+// El estado de las pantallas de club se carga cuando se usa, no al arrancar:
+// con 50+ clubes serian cientos de lecturas en cada arranque en frio. Se
+// vuelve a leer cada pocos minutos por si la subida la recibio otra instancia.
+const REFRESCO_CLUB_MS = 5 * 60 * 1000;
+const clubCargadoEn = new Map();
+const clubCargando = new Map();
+function estadoVacioDeClub() {
+  return { status: { hasPresentation: false, contentType: null, originalName: null, uploadedAt: null } };
+}
+async function asegurarClave(clave) {
+  const c = parseClaveClub(clave);
+  if (!c) return;
+  if (!simpleScreenState[clave]) simpleScreenState[clave] = estadoVacioDeClub();
+  if (!simplePlaylists[clave]) simplePlaylists[clave] = { items: [], updatedAt: null };
+  const desde = clubCargadoEn.get(clave) || 0;
+  if (Date.now() - desde < REFRESCO_CLUB_MS) return;
+  // Si ya hay una carga en vuelo, esperamos esa misma: si no, dos peticiones
+  // casi simultaneas de la misma pantalla verian el estado todavia vacio y
+  // una de ellas mostraria la plantilla por un minuto sin razon.
+  if (clubCargando.has(clave)) return clubCargando.get(clave);
+  const tarea = (async () => {
+    try {
+      const st = await loadJSONFromGCS(objetosDeClub(clave).status, null);
+      if (st) simpleScreenState[clave].status = st;
+      const pl = await loadJSONFromGCS(playlistObjectName(clave), null);
+      if (pl && Array.isArray(pl.items)) {
+        simplePlaylists[clave] = { items: normalizePlaylistItems(pl.items), updatedAt: pl.updatedAt || null };
+      }
+      clubCargadoEn.set(clave, Date.now());
+    } catch (e) {
+      console.error('No se pudo cargar el estado de ' + clave + ': ' + e.message);
+    } finally {
+      clubCargando.delete(clave);
+    }
+  })();
+  clubCargando.set(clave, tarea);
+  return tarea;
+}
+// Para LEER: si el club aun no sube nada propio, se sirve la plantilla.
+// Para ESCRIBIR siempre se usa la clave propia del club; una subida jamas
+// puede acabar en la plantilla ni en una pantalla global.
+async function claveDeLectura(clave) {
+  const c = parseClaveClub(clave);
+  if (!c) return clave;
+  await asegurarClave(clave);
+  const pl = simplePlaylists[clave];
+  const st = simpleScreenState[clave];
+  const tienePropio = (pl && pl.items && pl.items.length > 0) ||
+                      (st && st.status && st.status.hasPresentation);
+  return tienePropio ? clave : plantillaPara(c.n);
+}
+function ctxDeClub(clave) {
+  const objs = objetosDeClub(clave);
+  if (!simpleScreenState[clave]) simpleScreenState[clave] = estadoVacioDeClub();
+  const state = simpleScreenState[clave];
+  return {
+    screenId: clave,
+    contentObject: objs.content,
+    statusObject: objs.status,
+    sharepointStateObject: null,
+    getStatus: () => state.status,
+    setStatus: (v) => { state.status = v; },
+    getSharepointSync: () => ({ lastModifiedDateTime: null, lastCheckedAt: null, lastSyncedAt: null, sourceName: null, error: null }),
+    setSharepointSync: () => {},
+    getShareUrl: () => '',
+    setShareUrl: () => {},
+    getSlideIntervalSeconds: () => 10,
+    setSlideIntervalSeconds: () => {},
+    // Una pantalla de club nunca muestra el contador de socios: ese dato es
+    // de corporativo y vive solo en las pantallas globales 1 y 2.
+    getShowSociosTicker: () => false,
+    setShowSociosTicker: () => {},
+    saveScreenConfig: async () => {},
+  };
+}
+
 function getScreenCtx(screenIdRaw) {
+  if (parseClaveClub(screenIdRaw)) return ctxDeClub(String(screenIdRaw));
   const screenId = normalizeScreenId(screenIdRaw);
   if (screenId === '2') {
     return {
@@ -350,7 +498,9 @@ function requireBridge(req, res, next) {
 app.post('/api/upload-url', requireAdmin, async (req, res) => {
   try {
     const { fileSize, fileName } = req.body || {};
-    const ctx = getScreenCtx(req.body && req.body.screen);
+    const rc = resolverClave(req.body && req.body.screen, req.body && req.body.club);
+    if (rc.error) return res.status(400).json({ ok: false, error: rc.error });
+    const ctx = getScreenCtx(rc.clave);
     if (fileSize && Number(fileSize) > MAX_PPTX_BYTES) {
       return res.status(400).json({ ok: false, error: `El archivo supera el limite de ${MAX_PPTX_BYTES / (1024 * 1024)} MB.` });
     }
@@ -374,8 +524,10 @@ app.post('/api/upload-url', requireAdmin, async (req, res) => {
 app.post('/api/upload-complete', requireAdmin, async (req, res) => {
   try {
     const { originalName } = req.body || {};
-    const ctx = getScreenCtx(req.body && req.body.screen);
-    const idPantalla = String((req.body && req.body.screen) || '1');
+    const rc = resolverClave(req.body && req.body.screen, req.body && req.body.club);
+    if (rc.error) return res.status(400).json({ ok: false, error: rc.error });
+    const ctx = getScreenCtx(rc.clave);
+    const idPantalla = String(rc.clave);
     let compresion = null;
     if (idPantalla === '2') {
       compresion = await comprimirObjetoGCS(ctx.contentObject, 'pantalla 2');
@@ -394,19 +546,31 @@ app.post('/api/upload-complete', requireAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/status', (req, res) => {
-  const ctx = getScreenCtx(req.query.screen);
+app.get('/api/status', async (req, res) => {
+  const rc = resolverClave(req.query.screen, req.query.club);
+  if (rc.error) {
+    return res.status(404).json({ ok: false, error: rc.error, hasPresentation: false, clubDesconocido: true });
+  }
+  const ctx = getScreenCtx(await claveDeLectura(rc.clave));
   res.json(ctx.getStatus());
 });
 
 // Config publica (sin datos sensibles) para la pantalla de la Smart TV
-app.get('/api/display-config', (req, res) => {
-  const ctx = getScreenCtx(req.query.screen);
+app.get('/api/display-config', async (req, res) => {
+  const rc = resolverClave(req.query.screen, req.query.club);
+  if (rc.error) {
+    return res.status(404).json({ ok: false, error: rc.error, slideIntervalSeconds: 10, showSociosTicker: false });
+  }
+  const ctx = getScreenCtx(await claveDeLectura(rc.clave));
   res.json({ slideIntervalSeconds: ctx.getSlideIntervalSeconds(), showSociosTicker: ctx.getShowSociosTicker() });
 });
 
 app.get('/api/current-pptx', async (req, res) => {
-  const ctx = getScreenCtx(req.query.screen);
+  const rc = resolverClave(req.query.screen, req.query.club);
+  if (rc.error) {
+    return res.status(404).json({ ok: false, error: rc.error });
+  }
+  const ctx = getScreenCtx(await claveDeLectura(rc.clave));
   const status = ctx.getStatus();
   const contentType = (status && status.contentType) || 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
   const file = bucket.file(ctx.contentObject);
@@ -470,18 +634,44 @@ app.get('/api/current-pptx', async (req, res) => {
 // ---------- Lista de reproduccion de varios videos (pantallas 3 en adelante) ----------
 const PLAYLIST_VIDEO_EXT = ['.mp4', '.m4v', '.mov', '.webm'];
 
-function requirePlaylistScreen(req, res) {
+// Devuelve la clave de ESCRITURA: la propia del club, nunca la plantilla.
+async function requirePlaylistScreen(req, res) {
   const raw = (req.body && req.body.screen) || req.query.screen;
-  const screenId = asPlaylistScreen(raw);
+  const club = (req.body && req.body.club) || req.query.club;
+  const rc = resolverClave(raw, club);
+  if (rc.error) {
+    res.status(400).json({ ok: false, error: rc.error });
+    return null;
+  }
+  if (parseClaveClub(rc.clave)) {
+    // Las cuatro pantallas de un club admiten lista de reproduccion.
+    await asegurarClave(rc.clave);
+    return rc.clave;
+  }
+  const screenId = asPlaylistScreen(rc.clave);
   if (!screenId) {
     res.status(400).json({ ok: false, error: 'La lista de reproduccion solo esta disponible en las pantallas 3 en adelante.' });
     return null;
   }
   return screenId;
 }
+// Clave de LECTURA de una lista: la del club si ya tiene videos propios, si no
+// la de la plantilla corporativa.
+async function claveDeListaParaLeer(screenRaw, clubRaw) {
+  const rc = resolverClave(screenRaw, clubRaw);
+  if (rc.error) return { error: rc.error };
+  const lectura = await claveDeLectura(rc.clave);
+  if (parseClaveClub(lectura)) return { clave: lectura };
+  const screenId = asPlaylistScreen(lectura);
+  return screenId ? { clave: screenId } : { clave: null };
+}
 
-app.get('/api/playlist', (req, res) => {
-  const screenId = asPlaylistScreen(req.query.screen);
+app.get('/api/playlist', async (req, res) => {
+  const rl = await claveDeListaParaLeer(req.query.screen, req.query.club);
+  if (rl.error) {
+    return res.status(404).json({ ok: false, enabled: false, items: [], updatedAt: null, error: rl.error, clubDesconocido: true });
+  }
+  const screenId = rl.clave;
   if (!screenId) {
     return res.json({ ok: true, enabled: false, items: [], updatedAt: null });
   }
@@ -501,7 +691,7 @@ app.get('/api/playlist', (req, res) => {
 
 app.post('/api/playlist/upload-url', requireAdmin, async (req, res) => {
   try {
-    const screenId = requirePlaylistScreen(req, res);
+    const screenId = await requirePlaylistScreen(req, res);
     if (!screenId) return;
     const { fileName, fileSize } = req.body || {};
     const ext = path.extname(String(fileName || '')).toLowerCase();
@@ -658,7 +848,7 @@ async function comprimirVideoSubido(screenId, itemId) {
 
 app.post('/api/playlist/add', requireAdmin, async (req, res) => {
   try {
-    const screenId = requirePlaylistScreen(req, res);
+    const screenId = await requirePlaylistScreen(req, res);
     if (!screenId) return;
     const { itemId, originalName } = req.body || {};
     if (!isValidItemId(itemId)) {
@@ -684,7 +874,7 @@ app.post('/api/playlist/add', requireAdmin, async (req, res) => {
 // crea un renglon nuevo, justo despues del original, que apunta al mismo video.
 app.post('/api/playlist/duplicate', requireAdmin, async (req, res) => {
   try {
-    const screenId = requirePlaylistScreen(req, res);
+    const screenId = await requirePlaylistScreen(req, res);
     if (!screenId) return;
     const { slot } = req.body || {};
     if (!isValidItemId(slot)) {
@@ -715,7 +905,7 @@ app.post('/api/playlist/duplicate', requireAdmin, async (req, res) => {
 
 app.post('/api/playlist/remove', requireAdmin, async (req, res) => {
   try {
-    const screenId = requirePlaylistScreen(req, res);
+    const screenId = await requirePlaylistScreen(req, res);
     if (!screenId) return;
     const { slot } = req.body || {};
     if (!isValidItemId(slot)) {
@@ -737,7 +927,7 @@ app.post('/api/playlist/remove', requireAdmin, async (req, res) => {
 
 app.post('/api/playlist/reorder', requireAdmin, async (req, res) => {
   try {
-    const screenId = requirePlaylistScreen(req, res);
+    const screenId = await requirePlaylistScreen(req, res);
     if (!screenId) return;
     const order = (req.body && req.body.order) || [];
     if (!Array.isArray(order)) {
@@ -762,13 +952,18 @@ app.post('/api/playlist/reorder', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/playlist-item', async (req, res) => {
-  const screenId = asPlaylistScreen(req.query.screen);
+  const rl = await claveDeListaParaLeer(req.query.screen, req.query.club);
+  if (rl.error) {
+    res.status(404).json({ ok: false, error: rl.error });
+    return;
+  }
+  const screenId = rl.clave;
   const videoId = String(req.query.id || '');
   if (!screenId || !isValidItemId(videoId)) {
     res.status(400).json({ ok: false, error: 'Video no valido.' });
     return;
   }
-  const entry = (simplePlaylists[screenId].items || []).find((it) => it.video === videoId);
+  const entry = (((simplePlaylists[screenId] || {}).items) || []).find((it) => it.video === videoId);
   const contentType = (entry && entry.contentType) || 'video/mp4';
   const file = bucket.file(playlistItemObjectName(screenId, videoId));
 
@@ -1382,6 +1577,80 @@ function schedulePowerBISync() {
   }, msUntilNextPowerBIRun());
 }
 
+// ---------- Directorio de clubes ----------
+// Publico: el menu de tv.fpt.com.mx lo necesita para armar region > club >
+// pantalla. Son los mismos datos del directorio publico de la empresa.
+app.get('/api/clubes', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    actualizado: clubes.actualizado || null,
+    plantilla: clubes.plantilla || PLANTILLA_POR_DEFECTO,
+    pantallasPorClub: CLUB_SCREEN_IDS.length,
+    clubes: ((clubes.clubes) || []).map((c) => ({
+      codigo: c.codigo,
+      nombre: c.nombre,
+      region: c.region,
+      ciudad: c.ciudad || '',
+      estado: c.estado || '',
+      estatus: c.estatus || 'Abierto',
+    })),
+  });
+});
+
+app.post('/api/clubes', requireAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const codigo = String(b.codigo || '').trim().toLowerCase();
+    const nombre = String(b.nombre || '').trim();
+    const region = String(b.region || '').trim();
+    if (!esCodigoClub(codigo)) {
+      return res.status(400).json({ ok: false, error: 'El codigo solo admite minusculas, numeros y guiones (2 a 40 caracteres).' });
+    }
+    if (!nombre) return res.status(400).json({ ok: false, error: 'Escribe el nombre del club.' });
+    if (!region) return res.status(400).json({ ok: false, error: 'Escribe la region del club.' });
+    if (clubesPorCodigo.has(codigo)) {
+      return res.status(409).json({ ok: false, error: 'Ya existe un club con el codigo "' + codigo + '".' });
+    }
+    const nuevo = {
+      codigo: codigo,
+      nombre: nombre.slice(0, 120),
+      region: region.slice(0, 60),
+      ciudad: String(b.ciudad || '').trim().slice(0, 80),
+      estado: String(b.estado || '').trim().slice(0, 80),
+      estatus: String(b.estatus || 'Abierto').trim().slice(0, 20),
+    };
+    clubes.clubes = ((clubes.clubes) || []).concat([nuevo]);
+    clubes.actualizado = new Date().toISOString().slice(0, 10);
+    reindexarClubes();
+    await saveJSONToGCS(CLUBES_OBJECT, clubes);
+    res.json({ ok: true, club: nuevo, total: clubes.clubes.length });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Cambia a que pantalla global le copia cada pantalla de club mientras no
+// tenga contenido propio. No mueve ni borra ningun archivo.
+app.post('/api/clubes/plantilla', requireAdmin, async (req, res) => {
+  try {
+    const entrada = (req.body && req.body.plantilla) || {};
+    const nueva = {};
+    for (const n of CLUB_SCREEN_IDS) {
+      const destino = String(entrada[n] || (clubes.plantilla || {})[n] || PLANTILLA_POR_DEFECTO[n]);
+      if (SIMPLE_SCREEN_IDS.indexOf(destino) === -1) {
+        return res.status(400).json({ ok: false, error: 'La pantalla ' + n + ' solo puede copiar de una pantalla global 3 a 10.' });
+      }
+      nueva[n] = destino;
+    }
+    clubes.plantilla = nueva;
+    await saveJSONToGCS(CLUBES_OBJECT, clubes);
+    res.json({ ok: true, plantilla: nueva });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/api/powerbi-status', (req, res) => {
   res.json({
     ...powerbiSync,
@@ -1402,6 +1671,9 @@ app.post('/api/powerbi/sync-now', requireAdmin, async (req, res) => {
 });
 
 app.get('/api/sharepoint-status', (req, res) => {
+  if (req.query.club) {
+    return res.status(400).json({ ok: false, error: 'Las pantallas de club no usan SharePoint.', configured: false });
+  }
   const ctx = getScreenCtx(req.query.screen);
   res.json({
     ...ctx.getSharepointSync(),
@@ -1412,6 +1684,9 @@ app.get('/api/sharepoint-status', (req, res) => {
 });
 
 app.post('/api/sharepoint/sync-now', requireAdmin, async (req, res) => {
+  if ((req.body && req.body.club) || req.query.club) {
+    return res.status(400).json({ ok: false, error: 'Las pantallas de club no usan SharePoint.' });
+  }
   const screenId = normalizeScreenId((req.body && req.body.screen) || req.query.screen);
   const result = await checkSharePointSync(screenId);
   res.json({ ok: !result.error, sharepoint: result });
@@ -1423,6 +1698,9 @@ app.post('/api/sharepoint/sync-now', requireAdmin, async (req, res) => {
 // (autenticacion de aplicacion, sin usuario) pueda resolverlo.
 app.post('/api/sharepoint/set-link', requireAdmin, async (req, res) => {
   const { shareUrl, slideIntervalSeconds, showSociosTicker } = req.body || {};
+  if (req.body && req.body.club) {
+    return res.status(400).json({ ok: false, error: 'Las pantallas de club no usan SharePoint.' });
+  }
   const screenId = normalizeScreenId(req.body && req.body.screen);
   const ctx = getScreenCtx(screenId);
   const hasShareUrl = typeof shareUrl === 'string' && shareUrl.trim().length > 0;
@@ -1480,6 +1758,31 @@ async function start() {
       }
     }
   }
+
+  // Directorio de clubes. La primera vez se siembra con el listado oficial que
+  // viaja en el repositorio; despues manda siempre lo que hay en el bucket.
+  try {
+    const guardado = await loadJSONFromGCS(CLUBES_OBJECT, null);
+    if (guardado && Array.isArray(guardado.clubes)) {
+      clubes = {
+        actualizado: guardado.actualizado || null,
+        plantilla: Object.assign({}, PLANTILLA_POR_DEFECTO, guardado.plantilla || {}),
+        clubes: guardado.clubes,
+      };
+    } else {
+      const semilla = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'clubes-semilla.json'), 'utf8'));
+      clubes = {
+        actualizado: semilla.actualizado || null,
+        plantilla: Object.assign({}, PLANTILLA_POR_DEFECTO, semilla.plantilla || {}),
+        clubes: semilla.clubes || [],
+      };
+      await saveJSONToGCS(CLUBES_OBJECT, clubes);
+      console.log('Directorio de clubes sembrado con ' + clubes.clubes.length + ' clubes.');
+    }
+  } catch (e) {
+    console.error('No se pudo cargar el directorio de clubes: ' + e.message);
+  }
+  reindexarClubes();
 
   // Un enlace guardado desde el panel de administracion (mas reciente) gana
   // sobre la variable de entorno con la que arranco el contenedor.
@@ -1543,6 +1846,7 @@ async function start() {
     console.log(`  - Pantalla 8 para la Smart TV:              /display.html?screen=8`);
     console.log(`  - Pantalla 9 para la Smart TV:              /display.html?screen=9`);
     console.log(`  - Pantalla 10 para la Smart TV:              /display.html?screen=10`);
+    console.log(`  - Clubes registrados: ${clubes.clubes.length}. Pantalla de club: /display.html?club=<codigo>&screen=1..4`);
     console.log(`  - Sincronizacion SharePoint cada ${Math.round(SHAREPOINT_POLL_MS / 60000)} minuto(s) (ambas pantallas).`);
     console.log(`  - Power BI: sincronizacion diaria a las ${POWERBI_POLL_HOUR_UTC}:${String(POWERBI_POLL_MINUTE_UTC).padStart(2, '0')} UTC.`);
   });

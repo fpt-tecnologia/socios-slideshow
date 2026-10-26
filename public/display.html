@@ -142,15 +142,39 @@ let lastUploadedAt = null;
 let presentationInitialized = false;
 const urlParams = new URLSearchParams(location.search);
 const VALID_SCREENS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
-const SCREEN = VALID_SCREENS.includes(urlParams.get('screen')) ? urlParams.get('screen') : '1';
-// El contador de socios es solo de corporativo: pantallas 1 y 2. Se decide
-// aqui, por numero de pantalla y antes de cualquier consulta al servidor, para
-// que ninguna respuesta ni fallo de red pueda encenderlo en las demas.
+// Una pantalla de club viaja como ?club=<codigo>&screen=1..4. Sin ?club= en la
+// direccion nada cambia: mismas URLs, mismo contenido, mismo comportamiento.
+const CLUB_SCREENS = ['1', '2', '3', '4'];
+const PARAM_CLUB = (urlParams.get('club') || '').trim().toLowerCase();
+const CLUB = /^[a-z0-9][a-z0-9-]{1,39}$/.test(PARAM_CLUB) ? PARAM_CLUB : '';
+const SCREEN = CLUB
+  ? (CLUB_SCREENS.includes(urlParams.get('screen')) ? urlParams.get('screen') : '1')
+  : (VALID_SCREENS.includes(urlParams.get('screen')) ? urlParams.get('screen') : '1');
+// El contador de socios es solo de corporativo: pantallas globales 1 y 2. Se
+// decide aqui, antes de cualquier consulta al servidor, para que ninguna
+// respuesta ni fallo de red pueda encenderlo en las demas. Una pantalla de
+// club nunca lo muestra, aunque por dentro se llame 1 o 2.
 const SCREENS_CON_TICKER = ['1', '2'];
-const MUESTRA_TICKER = SCREENS_CON_TICKER.includes(SCREEN);
+const MUESTRA_TICKER = !CLUB && SCREENS_CON_TICKER.includes(SCREEN);
 if (!MUESTRA_TICKER) document.body.classList.add('no-ticker');
+// Las cuatro pantallas de un club trabajan con lista de reproduccion.
+function usaListaDeVideos() {
+  if (CLUB) return true;
+  return ['3', '4', '5', '6', '7', '8', '9', '10'].indexOf(SCREEN) !== -1;
+}
+// Si la direccion apunta a un club que no existe, la pantalla lo dice en vez
+// de ponerse a mostrar el contenido de otra: caer en silencio a la pantalla 1
+// fue justo lo que una vez piso el contenido de corporativo.
+function mostrarAvisoDeConfiguracion(texto) {
+  const caja = document.getElementById('empty-state');
+  if (!caja) return;
+  caja.textContent = texto;
+  caja.style.display = 'flex';
+  hideLoading();
+}
 function withScreen(url) {
-  return url + (url.indexOf('?') === -1 ? '?' : '&') + 'screen=' + SCREEN;
+  const sep = url.indexOf('?') === -1 ? '?' : '&';
+  return url + sep + 'screen=' + SCREEN + (CLUB ? '&club=' + encodeURIComponent(CLUB) : '');
 }
 
 async function fetchJSON(url) {
@@ -344,7 +368,7 @@ const tamBlobs = {};
 let bytesEnCache = 0;
 
 function urlDirectaItem(item) {
-  return '/api/playlist-item?screen=' + SCREEN + '&id=' + encodeURIComponent(item.video);
+  return withScreen('/api/playlist-item') + '&id=' + encodeURIComponent(item.video);
 }
 
 async function precargarLista(items) {
@@ -450,14 +474,18 @@ function startPlaylist() {
 // Devuelve true si esta pantalla esta gobernada por una lista de reproduccion,
 // en cuyo caso el flujo normal de una sola presentacion no debe ejecutarse.
 async function checkPlaylistLoop() {
-  if (PLAYLIST_SCREENS.indexOf(SCREEN) === -1) return false;
-  // Las pantallas 3 en adelante nunca muestran el contador de socios.
+  if (!usaListaDeVideos()) return false;
+  // Ni las pantallas 3 en adelante ni las de club muestran el contador.
   document.body.classList.add('no-ticker');
   let data;
   try {
     data = await fetchJSON(withScreen('/api/playlist'));
   } catch (e) {
     return playlistActive;
+  }
+  if (data && data.clubDesconocido) {
+    mostrarAvisoDeConfiguracion(data.error || 'Esta direccion no corresponde a ningun club.');
+    return true;
   }
   const items = (data && data.items) || [];
   if (!items.length) {
@@ -491,6 +519,11 @@ async function checkStatusLoop() {
       fetchJSON(withScreen('/api/status')),
       fetchJSON(withScreen('/api/display-config')),
     ]);
+
+    if (status && status.clubDesconocido) {
+      mostrarAvisoDeConfiguracion(status.error || 'Esta direccion no corresponde a ningun club.');
+      return;
+    }
 
     // Solo las pantallas con ticker obedecen a la configuracion. En las demas
     // la clase ya quedo puesta al cargar y aqui no se quita nunca.
@@ -555,7 +588,7 @@ async function revisarVersion() {
     if (vecesVersionDistinta < 2) return;
     if (recargaPendiente) return;
     recargaPendiente = true;
-    if (PLAYLIST_SCREENS.indexOf(SCREEN) === -1) {
+    if (!usaListaDeVideos()) {
       // Pantallas 1 y 2: no hay video en lista que interrumpir.
       recargarSiTocaAhora('pantalla sin lista de videos');
     } else {

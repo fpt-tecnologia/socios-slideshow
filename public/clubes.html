@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clubes — Fitness Para Todos</title>
+<style>
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    max-width: 640px; margin: 44px auto; padding: 0 16px;
+    color: #1b1e24; background: #f5f6f8;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.sub { color: #6b7380; font-size: 14px; margin-top: 0; }
+  .card { background: #fff; border-radius: 12px; padding: 20px; margin: 18px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .card > strong { display: block; font-size: 15px; margin-bottom: 4px; }
+  .card > .nota { color: #6b7380; font-size: 13px; line-height: 1.5; margin: 0 0 14px; }
+  label { display: block; font-weight: 600; font-size: 13px; margin: 14px 0 5px; }
+  input, select {
+    width: 100%; box-sizing: border-box; padding: 10px 12px;
+    border: 1px solid #ccd2da; border-radius: 8px; font: inherit; background: #fff;
+  }
+  input:focus, select:focus { outline: 2px solid #1a73e8; outline-offset: -1px; border-color: #1a73e8; }
+  small.pista { display: block; color: #868e9b; font-size: 12px; margin-top: 4px; }
+  button {
+    margin-top: 18px; width: 100%; padding: 12px; border: 0; border-radius: 9px;
+    background: #1a73e8; color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button.secundario { background: #eef1f6; color: #39404b; }
+  button:disabled { background: #b6bcc6; cursor: default; }
+  .msg { margin-top: 12px; font-size: 14px; }
+  .ok { color: #1a8a3c; } .err { color: #c62828; }
+  .region-titulo { font-size: 13px; text-transform: uppercase; letter-spacing: .07em; color: #7a828f; font-weight: 700; margin: 18px 0 6px; }
+  .club-linea { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-top: 1px solid #eef0f3; font-size: 14px; }
+  .club-linea .codigo { color: #868e9b; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .club-linea .pendiente { color: #b26a00; font-size: 12px; font-weight: 600; }
+  .fila-dos { display: flex; gap: 12px; }
+  .fila-dos > div { flex: 1; }
+  a.volver { display: inline-block; margin-bottom: 18px; color: #1a73e8; text-decoration: none; font-size: 14px; }
+</style>
+</head>
+<body>
+  <a class="volver" href="/">&#8249; Volver al panel</a>
+  <h1>Clubes</h1>
+  <p class="sub">Cada club tiene 4 pantallas, numeradas 1 a 4 dentro del club.</p>
+
+  <div class="card">
+    <strong>Dar de alta un club</strong>
+    <p class="nota">Se crea vacío: sus 4 pantallas muestran el contenido corporativo hasta que alguien suba algo propio. No se borra ni se mueve nada de lo que ya existe.</p>
+    <label for="token">Clave de administrador</label>
+    <input type="password" id="token" placeholder="Clave" autocomplete="new-password" spellcheck="false">
+    <div class="fila-dos">
+      <div>
+        <label for="nombre">Nombre del club</label>
+        <input type="text" id="nombre" placeholder="PF Cimatario">
+      </div>
+      <div>
+        <label for="codigo">Código</label>
+        <input type="text" id="codigo" placeholder="cimatario" spellcheck="false" autocapitalize="off">
+        <small class="pista">Va en la dirección de la TV. Minúsculas, números y guiones.</small>
+      </div>
+    </div>
+    <div class="fila-dos">
+      <div>
+        <label for="region">Región</label>
+        <input type="text" id="region" list="regiones" placeholder="Región 1">
+        <datalist id="regiones"></datalist>
+      </div>
+      <div>
+        <label for="ciudad">Ciudad</label>
+        <input type="text" id="ciudad" placeholder="Querétaro">
+      </div>
+    </div>
+    <label for="estatus">Estatus</label>
+    <select id="estatus">
+      <option value="Abierto">Abierto</option>
+      <option value="Por abrir">Por abrir</option>
+    </select>
+    <button id="crear">Dar de alta el club</button>
+    <div class="msg" id="msg-crear"></div>
+  </div>
+
+  <div class="card">
+    <strong>De qué pantalla copia cada pantalla de club</strong>
+    <p class="nota">Mientras un club no suba contenido propio, su pantalla sirve lo que hoy ve la pantalla global que elijas aquí. Así, migrar una TV es solo cambiarle la dirección: lo que se ve en la pared no cambia.</p>
+    <div id="plantilla-campos"></div>
+    <button id="guardar-plantilla" class="secundario">Guardar</button>
+    <div class="msg" id="msg-plantilla"></div>
+  </div>
+
+  <div class="card">
+    <strong>Directorio</strong>
+    <p class="nota" id="resumen">Cargando…</p>
+    <div id="lista"></div>
+  </div>
+
+<script>
+const tokenEl = document.getElementById('token');
+const listaEl = document.getElementById('lista');
+const resumenEl = document.getElementById('resumen');
+const camposEl = document.getElementById('plantilla-campos');
+const PANTALLAS_GLOBALES = ['3', '4', '5', '6', '7', '8', '9', '10'];
+let datos = { clubes: [], plantilla: {}, pantallasPorClub: 4 };
+
+tokenEl.value = localStorage.getItem('adminToken') || '';
+tokenEl.addEventListener('change', function () { localStorage.setItem('adminToken', tokenEl.value.trim()); });
+
+function el(tag, cls, texto) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (texto !== undefined) e.textContent = texto;
+  return e;
+}
+
+function pintarPlantilla() {
+  camposEl.innerHTML = '';
+  for (let n = 1; n <= (datos.pantallasPorClub || 4); n++) {
+    const lab = el('label', null, 'Pantalla ' + n + ' del club copia de…');
+    lab.setAttribute('for', 'plantilla-' + n);
+    const sel = document.createElement('select');
+    sel.id = 'plantilla-' + n;
+    PANTALLAS_GLOBALES.forEach(function (g) {
+      const o = document.createElement('option');
+      o.value = g; o.textContent = 'Pantalla global ' + g;
+      sel.appendChild(o);
+    });
+    sel.value = String((datos.plantilla || {})[String(n)] || '3');
+    camposEl.appendChild(lab);
+    camposEl.appendChild(sel);
+  }
+}
+
+function pintarLista() {
+  listaEl.innerHTML = '';
+  const porRegion = {};
+  datos.clubes.forEach(function (c) {
+    (porRegion[c.region] = porRegion[c.region] || []).push(c);
+  });
+  const regs = Object.keys(porRegion).sort();
+  regs.forEach(function (r) {
+    listaEl.appendChild(el('div', 'region-titulo', r + ' · ' + porRegion[r].length));
+    porRegion[r].sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); }).forEach(function (c) {
+      const f = el('div', 'club-linea');
+      f.appendChild(el('span', null, c.nombre));
+      f.appendChild(el('span', 'codigo', c.codigo));
+      if (c.estatus && c.estatus !== 'Abierto') f.appendChild(el('span', 'pendiente', c.estatus));
+      listaEl.appendChild(f);
+    });
+  });
+  resumenEl.textContent = datos.clubes.length + ' clubes en ' + regs.length + ' regiones' +
+    (datos.actualizado ? ' · actualizado ' + datos.actualizado : '') + '.';
+  const dl = document.getElementById('regiones');
+  dl.innerHTML = '';
+  regs.forEach(function (r) {
+    const o = document.createElement('option'); o.value = r; dl.appendChild(o);
+  });
+}
+
+async function cargar() {
+  const r = await fetch('/api/clubes', { cache: 'no-store' });
+  datos = await r.json();
+  pintarLista();
+  pintarPlantilla();
+}
+
+function sugerirCodigo(nombre) {
+  return String(nombre || '').toLowerCase().normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/^pf\s+/, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
+document.getElementById('nombre').addEventListener('blur', function () {
+  const cod = document.getElementById('codigo');
+  if (!cod.value.trim()) cod.value = sugerirCodigo(this.value);
+});
+
+document.getElementById('crear').addEventListener('click', async function () {
+  const msg = document.getElementById('msg-crear');
+  const token = tokenEl.value.trim();
+  if (!token) { msg.innerHTML = '<span class="err">Escribe la clave de administrador.</span>'; return; }
+  localStorage.setItem('adminToken', token);
+  const cuerpo = {
+    codigo: document.getElementById('codigo').value.trim().toLowerCase(),
+    nombre: document.getElementById('nombre').value.trim(),
+    region: document.getElementById('region').value.trim(),
+    ciudad: document.getElementById('ciudad').value.trim(),
+    estatus: document.getElementById('estatus').value,
+  };
+  this.disabled = true;
+  msg.textContent = 'Dando de alta…';
+  try {
+    const r = await fetch('/api/clubes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify(cuerpo),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'No se pudo dar de alta.');
+    msg.innerHTML = '<span class="ok">Listo: ' + d.club.nombre + ' (' + d.club.codigo + '). Ya aparece en el menú.</span>';
+    document.getElementById('nombre').value = '';
+    document.getElementById('codigo').value = '';
+    document.getElementById('ciudad').value = '';
+    await cargar();
+  } catch (e) {
+    msg.innerHTML = '<span class="err">' + e.message + '</span>';
+  }
+  this.disabled = false;
+});
+
+document.getElementById('guardar-plantilla').addEventListener('click', async function () {
+  const msg = document.getElementById('msg-plantilla');
+  const token = tokenEl.value.trim();
+  if (!token) { msg.innerHTML = '<span class="err">Escribe la clave de administrador.</span>'; return; }
+  const plantilla = {};
+  for (let n = 1; n <= (datos.pantallasPorClub || 4); n++) {
+    plantilla[String(n)] = document.getElementById('plantilla-' + n).value;
+  }
+  this.disabled = true;
+  msg.textContent = 'Guardando…';
+  try {
+    const r = await fetch('/api/clubes/plantilla', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-admin-token': token },
+      body: JSON.stringify({ plantilla: plantilla }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'No se pudo guardar.');
+    msg.innerHTML = '<span class="ok">Guardado. Solo afecta a los clubes que aún no suben contenido propio.</span>';
+    await cargar();
+  } catch (e) {
+    msg.innerHTML = '<span class="err">' + e.message + '</span>';
+  }
+  this.disabled = false;
+});
+
+cargar().catch(function () {
+  resumenEl.textContent = 'No se pudo cargar el directorio.';
+});
+</script>
+</body>
+</html>
