@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tablero de pantallas — Fitness Para Todos</title>
+<style>
+  :root {
+    --fondo: #f5f6f8;
+    --tarjeta: #ffffff;
+    --tinta: #1b1e24;
+    --tenue: #6b7380;
+    --mas-tenue: #949ba7;
+    --linea: #e6e9ee;
+    --acento: #1a73e8;
+    --viva: #1a8a3c;
+    --viva-fondo: #e8f5ec;
+    --dudosa: #b26a00;
+    --dudosa-fondo: #fdf3e3;
+    --muerta: #c62828;
+    --muerta-fondo: #fdeaea;
+    --nunca: #949ba7;
+    --nunca-fondo: #f0f2f5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    max-width: 860px; margin: 0 auto; padding: 36px 16px 64px;
+    color: var(--tinta); background: var(--fondo);
+    -webkit-font-smoothing: antialiased;
+  }
+  a.volver { display: inline-block; margin-bottom: 16px; color: var(--acento); text-decoration: none; font-size: 14px; }
+  h1 { font-size: 23px; margin: 0 0 4px; }
+  .sub { color: var(--tenue); font-size: 14px; margin: 0 0 20px; }
+  .barra-clave { display: flex; gap: 10px; align-items: center; margin-bottom: 22px; }
+  .barra-clave input {
+    flex: 1; padding: 10px 12px; border: 1px solid #ccd2da; border-radius: 9px; font: inherit; background: #fff;
+  }
+  .barra-clave input:focus { outline: 2px solid var(--acento); outline-offset: -1px; border-color: var(--acento); }
+  .barra-clave button {
+    padding: 10px 18px; border: 0; border-radius: 9px; background: var(--acento);
+    color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 26px; }
+  .tile {
+    background: var(--tarjeta); border-radius: 12px; padding: 15px 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+  }
+  .tile .n { font-size: 27px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tile .et { font-size: 12px; color: var(--tenue); margin-top: 3px; line-height: 1.3; }
+  .tile.viva .n { color: var(--viva); }
+  .tile.dudosa .n { color: var(--dudosa); }
+  .tile.muerta .n { color: var(--muerta); }
+  h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--mas-tenue); margin: 30px 0 10px; font-weight: 700;
+  }
+  .grupo { background: var(--tarjeta); border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.07); overflow: hidden; }
+  .grupo + .grupo { margin-top: 12px; }
+  .grupo-cab {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 13px 16px; background: #eef1f6; font-weight: 600; font-size: 14px;
+  }
+  .grupo-cab .region { font-weight: 400; font-size: 12px; color: var(--tenue); }
+  .grupo-cab a { margin-left: auto; font-size: 12px; color: var(--acento); text-decoration: none; font-weight: 600; }
+  .ren {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; border-top: 1px solid var(--linea);
+  }
+  .punto { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .punto.viva { background: var(--viva); }
+  .punto.dudosa { background: var(--dudosa); }
+  .punto.muerta { background: var(--muerta); }
+  .punto.nunca { background: var(--nunca); }
+  .ren .quien { flex: 1 1 40%; min-width: 0; font-weight: 600; font-size: 14px; }
+  .ren .quien em { display: block; font-style: normal; font-weight: 400; font-size: 12.5px; color: var(--tenue); margin-top: 2px; }
+  .ren .quien em b { font-weight: 600; color: #4a515c; }
+  .ren .estado {
+    flex: 0 0 auto; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+  }
+  .estado.viva { background: var(--viva-fondo); color: var(--viva); }
+  .estado.dudosa { background: var(--dudosa-fondo); color: var(--dudosa); }
+  .estado.muerta { background: var(--muerta-fondo); color: var(--muerta); }
+  .estado.nunca { background: var(--nunca-fondo); color: var(--nunca); }
+  .pie { margin-top: 26px; font-size: 12.5px; color: var(--mas-tenue); line-height: 1.6; }
+  .msg { padding: 18px; color: var(--tenue); font-size: 14px; }
+  .err { color: var(--muerta); }
+  @media (max-width: 560px) {
+    .tiles { grid-template-columns: repeat(2, 1fr); }
+    .ren { flex-wrap: wrap; }
+    .ren .quien { flex-basis: 100%; }
+    .ren .estado { margin-left: 21px; }
+  }
+</style>
+</head>
+<body>
+  <a class="volver" href="/">&#8249; Volver al panel</a>
+  <h1>Tablero de pantallas</h1>
+  <p class="sub" id="sub">Cada pantalla se reporta una vez por minuto. Esta página se actualiza sola cada 30 segundos.</p>
+
+  <div class="barra-clave">
+    <input type="password" id="token" placeholder="Clave de administrador" autocomplete="new-password" spellcheck="false">
+    <button id="ver">Ver</button>
+  </div>
+
+  <div id="cuerpo"></div>
+
+  <p class="pie">
+    Una pantalla cuenta como <b>en línea</b> si se reportó en los últimos 3 minutos.
+    Las pantallas de club solo aparecen aquí cuando ya se conectaron alguna vez o tienen contenido propio;
+    el resto sigue heredando de corporativo y no hay nada que reportar de ellas.
+  </p>
+
+<script>
+const tokenEl = document.getElementById('token');
+const cuerpoEl = document.getElementById('cuerpo');
+const subEl = document.getElementById('sub');
+let temporizador = null;
+
+tokenEl.value = localStorage.getItem('adminToken') || '';
+
+function el(tag, cls, texto) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (texto !== undefined) e.textContent = texto;
+  return e;
+}
+
+function hace(iso, ahora) {
+  if (!iso) return null;
+  const seg = Math.max(0, Math.round((Date.parse(ahora) - Date.parse(iso)) / 1000));
+  if (seg < 60) return 'hace ' + seg + ' s';
+  const min = Math.round(seg / 60);
+  if (min < 60) return 'hace ' + min + ' min';
+  const hrs = Math.round(min / 60);
+  if (hrs < 48) return 'hace ' + hrs + ' h';
+  return 'hace ' + Math.round(hrs / 24) + ' días';
+}
+
+function estadoDe(f, ahora) {
+  if (!f.ultimaVez) return { clase: 'nunca', texto: 'Nunca conectada' };
+  const min = (Date.parse(ahora) - Date.parse(f.ultimaVez)) / 60000;
+  if (min <= 3) return { clase: 'viva', texto: 'En línea' };
+  if (min <= 120) return { clase: 'dudosa', texto: 'Intermitente' };
+  return { clase: 'muerta', texto: 'Sin señal' };
+}
+
+function queMuestra(f) {
+  const c = f.contenido || {};
+  let base;
+  if (c.tipo === 'lista') base = c.detalle + (c.detalle === '1' ? ' video en lista' : ' videos en lista');
+  else if (c.tipo === 'video') base = c.detalle;
+  else if (c.tipo === 'presentacion') base = c.detalle;
+  else base = 'Sin contenido';
+  if (f.hereda) return base + ' · heredado de la pantalla ' + f.plantilla;
+  return base;
+}
+
+const NOMBRES_GLOBALES = { '1': 'Oficina', '2': 'Oficina Recepción' };
+
+function renglon(f, ahora) {
+  const e = estadoDe(f, ahora);
+  const r = el('div', 'ren');
+  r.appendChild(el('span', 'punto ' + e.clase));
+
+  const quien = el('div', 'quien');
+  if (f.tipo === 'club') {
+    quien.appendChild(document.createTextNode('Pantalla ' + f.pantalla));
+  } else {
+    quien.appendChild(document.createTextNode(
+      'Pantalla ' + f.pantalla + (NOMBRES_GLOBALES[f.pantalla] ? ' · ' + NOMBRES_GLOBALES[f.pantalla] : '')));
+  }
+  const sub = el('em');
+  sub.appendChild(el('b', null, queMuestra(f)));
+  const extras = [];
+  if (f.ultimaVez) extras.push('vista ' + hace(f.ultimaVez, ahora));
+  if (f.tvs > 1) extras.push(f.tvs + ' TVs en la última hora');
+  if (extras.length) sub.appendChild(document.createTextNode(' · ' + extras.join(' · ')));
+  quien.appendChild(sub);
+  r.appendChild(quien);
+
+  r.appendChild(el('span', 'estado ' + e.clase, e.texto));
+  return r;
+}
+
+function pintar(d) {
+  cuerpoEl.innerHTML = '';
+  const ahora = d.ahora;
+  const cuenta = { viva: 0, dudosa: 0, muerta: 0, nunca: 0 };
+  d.filas.forEach(function (f) { cuenta[estadoDe(f, ahora).clase]++; });
+  const clubesConVida = {};
+  d.filas.forEach(function (f) { if (f.tipo === 'club') clubesConVida[f.club] = true; });
+
+  const tiles = el('div', 'tiles');
+  [
+    ['viva', cuenta.viva, 'en línea'],
+    ['dudosa', cuenta.dudosa, 'intermitentes'],
+    ['muerta', cuenta.muerta, 'sin señal'],
+    ['', Object.keys(clubesConVida).length + ' / ' + d.totalClubes, 'clubes con pantallas propias'],
+  ].forEach(function (t) {
+    const c = el('div', 'tile' + (t[0] ? ' ' + t[0] : ''));
+    c.appendChild(el('div', 'n', String(t[1])));
+    c.appendChild(el('div', 'et', t[2]));
+    tiles.appendChild(c);
+  });
+  cuerpoEl.appendChild(tiles);
+
+  const globales = d.filas.filter(function (f) { return f.tipo === 'global'; });
+  cuerpoEl.appendChild(el('h2', null, 'Corporativo y zonas'));
+  const g = el('div', 'grupo');
+  globales.forEach(function (f) { g.appendChild(renglon(f, ahora)); });
+  cuerpoEl.appendChild(g);
+
+  const porClub = {};
+  d.filas.filter(function (f) { return f.tipo === 'club'; }).forEach(function (f) {
+    (porClub[f.club] = porClub[f.club] || { nombre: f.clubNombre, region: f.region, filas: [] }).filas.push(f);
+  });
+  const codigos = Object.keys(porClub).sort(function (a, b) {
+    const ra = porClub[a].region || '', rb = porClub[b].region || '';
+    return ra === rb ? porClub[a].nombre.localeCompare(porClub[b].nombre, 'es') : ra.localeCompare(rb, 'es');
+  });
+
+  cuerpoEl.appendChild(el('h2', null, 'Clubes'));
+  if (!codigos.length) {
+    const vacio = el('div', 'grupo');
+    vacio.appendChild(el('div', 'msg',
+      'Ningún club se ha conectado todavía ni tiene contenido propio. Sus ' +
+      (d.totalClubes * d.pantallasPorClub) + ' pantallas siguen heredando de corporativo. ' +
+      'En cuanto apuntes una TV a la dirección de un club, aparece aquí.'));
+    cuerpoEl.appendChild(vacio);
+  }
+  codigos.forEach(function (cod) {
+    const c = porClub[cod];
+    const bloque = el('div', 'grupo');
+    const cab = el('div', 'grupo-cab');
+    cab.appendChild(document.createTextNode(c.nombre));
+    if (c.region) cab.appendChild(el('span', 'region', c.region));
+    const a = el('a', null, 'Administrar');
+    a.href = '/upload.html?club=' + encodeURIComponent(cod) + '&screen=1';
+    cab.appendChild(a);
+    bloque.appendChild(cab);
+    c.filas.sort(function (x, y) { return Number(x.pantalla) - Number(y.pantalla); })
+           .forEach(function (f) { bloque.appendChild(renglon(f, ahora)); });
+    cuerpoEl.appendChild(bloque);
+  });
+
+  const hora = new Date(ahora).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  subEl.textContent = 'Actualizado a las ' + hora + ' · cada pantalla se reporta una vez por minuto y esta página se refresca sola cada 30 segundos.';
+}
+
+async function cargar() {
+  const token = tokenEl.value.trim();
+  if (!token) {
+    cuerpoEl.innerHTML = '';
+    cuerpoEl.appendChild(el('div', 'msg', 'Escribe la clave de administrador para ver el tablero.'));
+    return;
+  }
+  localStorage.setItem('adminToken', token);
+  try {
+    const r = await fetch('/api/tablero', { cache: 'no-store', headers: { 'x-admin-token': token } });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'No se pudo leer el tablero.');
+    pintar(d);
+    if (temporizador) clearInterval(temporizador);
+    temporizador = setInterval(cargar, 30000);
+  } catch (e) {
+    cuerpoEl.innerHTML = '';
+    const m = el('div', 'msg');
+    m.appendChild(el('span', 'err', e.message));
+    cuerpoEl.appendChild(m);
+    if (temporizador) { clearInterval(temporizador); temporizador = null; }
+  }
+}
+
+document.getElementById('ver').addEventListener('click', cargar);
+tokenEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') cargar(); });
+cargar();
+</script>
+</body>
+</html>

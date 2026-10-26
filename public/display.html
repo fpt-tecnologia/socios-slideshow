@@ -172,9 +172,12 @@ function mostrarAvisoDeConfiguracion(texto) {
   caja.style.display = 'flex';
   hideLoading();
 }
+// El "tv=1" le dice al servidor que quien pregunta es una pantalla de verdad
+// y no el panel de administracion. Con eso se arma el tablero sin que ninguna
+// pantalla tenga que hacer ni una peticion extra.
 function withScreen(url) {
   const sep = url.indexOf('?') === -1 ? '?' : '&';
-  return url + sep + 'screen=' + SCREEN + (CLUB ? '&club=' + encodeURIComponent(CLUB) : '');
+  return url + sep + 'screen=' + SCREEN + (CLUB ? '&club=' + encodeURIComponent(CLUB) : '') + '&tv=1';
 }
 
 async function fetchJSON(url) {

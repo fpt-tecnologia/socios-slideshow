@@ -386,6 +386,66 @@ function ctxDeClub(clave) {
   };
 }
 
+
+// ---------- Tablero: quien esta viva y que esta mostrando ----------
+// Cada pantalla ya consulta su estado una vez por minuto. Aprovechamos esa
+// consulta para anotar que sigue viva: cero peticiones nuevas. Lo anotado se
+// guarda en el bucket como mucho una vez por minuto, mezclandolo con lo que
+// ya hay ahi para que dos instancias del servidor no se borren una a la otra.
+const VISTAS_OBJECT = 'data/pantallas-vistas.json';
+const GUARDA_VISTAS_MS = 60 * 1000;
+const MAX_IPS_POR_PANTALLA = 60;
+let vistas = {};
+let vistasSucias = false;
+
+function ipDelCliente(req) {
+  const reenviada = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return reenviada || (req.socket && req.socket.remoteAddress) || '';
+}
+function registrarVisita(clave, req) {
+  if (!clave) return;
+  const ahora = new Date().toISOString();
+  if (!vistas[clave]) vistas[clave] = { ultimaVez: null, ips: {} };
+  const v = vistas[clave];
+  v.ultimaVez = ahora;
+  const ip = ipDelCliente(req);
+  if (ip) {
+    v.ips[ip] = ahora;
+    const llaves = Object.keys(v.ips);
+    if (llaves.length > MAX_IPS_POR_PANTALLA) {
+      llaves.sort((a, b) => String(v.ips[a]).localeCompare(String(v.ips[b])));
+      for (const vieja of llaves.slice(0, llaves.length - MAX_IPS_POR_PANTALLA)) delete v.ips[vieja];
+    }
+  }
+  vistasSucias = true;
+}
+async function guardarVistas() {
+  if (!vistasSucias) return;
+  vistasSucias = false;
+  try {
+    const remoto = (await loadJSONFromGCS(VISTAS_OBJECT, {})) || {};
+    const unido = {};
+    const todas = Object.keys(remoto).concat(Object.keys(vistas));
+    for (const clave of todas) {
+      if (unido[clave]) continue;
+      const a = remoto[clave] || { ultimaVez: null, ips: {} };
+      const b = vistas[clave] || { ultimaVez: null, ips: {} };
+      const ips = Object.assign({}, a.ips || {});
+      for (const ip of Object.keys(b.ips || {})) {
+        if (!ips[ip] || ips[ip] < b.ips[ip]) ips[ip] = b.ips[ip];
+      }
+      unido[clave] = {
+        ultimaVez: (a.ultimaVez || '') > (b.ultimaVez || '') ? a.ultimaVez : b.ultimaVez,
+        ips: ips,
+      };
+    }
+    vistas = unido;
+    await saveJSONToGCS(VISTAS_OBJECT, vistas);
+  } catch (e) {
+    console.error('No se pudieron guardar las vistas: ' + e.message);
+  }
+}
+
 function getScreenCtx(screenIdRaw) {
   if (parseClaveClub(screenIdRaw)) return ctxDeClub(String(screenIdRaw));
   const screenId = normalizeScreenId(screenIdRaw);
@@ -551,6 +611,7 @@ app.get('/api/status', async (req, res) => {
   if (rc.error) {
     return res.status(404).json({ ok: false, error: rc.error, hasPresentation: false, clubDesconocido: true });
   }
+  if (req.query.tv === '1') registrarVisita(rc.clave, req);
   const ctx = getScreenCtx(await claveDeLectura(rc.clave));
   res.json(ctx.getStatus());
 });
@@ -667,6 +728,12 @@ async function claveDeListaParaLeer(screenRaw, clubRaw) {
 }
 
 app.get('/api/playlist', async (req, res) => {
+  // Las pantallas con lista de videos nunca llegan a /api/status, asi que es
+  // aqui donde se anota que siguen vivas.
+  if (req.query.tv === '1') {
+    const rv = resolverClave(req.query.screen, req.query.club);
+    if (rv.clave) registrarVisita(rv.clave, req);
+  }
   const rl = await claveDeListaParaLeer(req.query.screen, req.query.club);
   if (rl.error) {
     return res.status(404).json({ ok: false, enabled: false, items: [], updatedAt: null, error: rl.error, clubDesconocido: true });
@@ -1580,6 +1647,78 @@ function schedulePowerBISync() {
 // ---------- Directorio de clubes ----------
 // Publico: el menu de tv.fpt.com.mx lo necesita para armar region > club >
 // pantalla. Son los mismos datos del directorio publico de la empresa.
+// Todo lo que el tablero necesita, de memoria: no provoca ni una lectura del
+// bucket. Solo aparecen las pantallas de club que ya tienen vida propia (se
+// han conectado o tienen contenido); las demas siguen heredando y no hay nada
+// que reportar de ellas.
+app.get('/api/tablero', requireAdmin, (req, res) => {
+  const haceUnaHora = Date.now() - 3600 * 1000;
+
+  function contenidoDe(claveLectura) {
+    const ctx = getScreenCtx(claveLectura);
+    const st = ctx.getStatus() || {};
+    const pl = simplePlaylists[claveLectura] || { items: [], updatedAt: null };
+    if (pl.items && pl.items.length) {
+      return { tipo: 'lista', detalle: String(pl.items.length), desde: pl.updatedAt || null };
+    }
+    if (st.hasPresentation) {
+      const esVideo = String(st.contentType || '').indexOf('video/') === 0;
+      return { tipo: esVideo ? 'video' : 'presentacion', detalle: st.originalName || 'contenido', desde: st.uploadedAt || null };
+    }
+    return { tipo: 'vacia', detalle: '', desde: null };
+  }
+
+  function fila(clave) {
+    const c = parseClaveClub(clave);
+    const v = vistas[clave] || null;
+    const ips = (v && v.ips) || {};
+    let tvs = 0;
+    for (const ip of Object.keys(ips)) {
+      if (Date.parse(ips[ip]) >= haceUnaHora) tvs++;
+    }
+    let lectura = clave;
+    let plantilla = null;
+    if (c) {
+      const st = simpleScreenState[clave];
+      const pl = simplePlaylists[clave];
+      const propio = Boolean((pl && pl.items && pl.items.length) ||
+                             (st && st.status && st.status.hasPresentation));
+      if (!propio) { lectura = plantillaPara(c.n); plantilla = lectura; }
+    }
+    const info = c ? clubesPorCodigo.get(c.codigo) : null;
+    return {
+      clave: clave,
+      tipo: c ? 'club' : 'global',
+      club: c ? c.codigo : null,
+      clubNombre: c ? ((info && info.nombre) || c.codigo) : null,
+      region: c ? ((info && info.region) || '') : null,
+      pantalla: c ? c.n : clave,
+      hereda: Boolean(plantilla),
+      plantilla: plantilla,
+      contenido: contenidoDe(lectura),
+      ultimaVez: v ? v.ultimaVez : null,
+      tvs: tvs,
+    };
+  }
+
+  const globales = ['1', '2'].concat(SIMPLE_SCREEN_IDS);
+  const deClub = {};
+  const fuentes = [Object.keys(vistas), Object.keys(simpleScreenState), Object.keys(simplePlaylists)];
+  for (const lista of fuentes) {
+    for (const k of lista) {
+      if (parseClaveClub(k)) deClub[k] = true;
+    }
+  }
+  const filas = globales.map(fila).concat(Object.keys(deClub).sort().map(fila));
+  res.json({
+    ok: true,
+    ahora: new Date().toISOString(),
+    pantallasPorClub: CLUB_SCREEN_IDS.length,
+    totalClubes: ((clubes.clubes) || []).length,
+    filas: filas,
+  });
+});
+
 app.get('/api/clubes', (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({
@@ -1783,6 +1922,11 @@ async function start() {
     console.error('No se pudo cargar el directorio de clubes: ' + e.message);
   }
   reindexarClubes();
+
+  // Lo que el tablero sabe de cada pantalla. Si no existe todavia, se empieza
+  // en blanco: se llena solo conforme las pantallas se reportan.
+  vistas = (await loadJSONFromGCS(VISTAS_OBJECT, {})) || {};
+  setInterval(guardarVistas, GUARDA_VISTAS_MS);
 
   // Un enlace guardado desde el panel de administracion (mas reciente) gana
   // sobre la variable de entorno con la que arranco el contenedor.
